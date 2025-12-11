@@ -31,7 +31,7 @@ st.markdown(background_style, unsafe_allow_html=True)
 
 st.markdown("""
     <style>
-    /* REMOVED 'header {visibility: hidden;}' SO SIDEBAR WORKS AGAIN */
+    /* Hiding Menu Elements but keeping Sidebar functional */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
@@ -55,11 +55,12 @@ st.markdown("""
         text-shadow: 1px 1px 2px black;
     }
     
+    /* Big Symmetric Buttons */
     .stButton button {
         width: 100%;
-        border-radius: 12px;
-        height: 60px;
-        font-size: 16px;
+        border-radius: 15px;
+        height: 70px;
+        font-size: 18px;
         font-weight: 600;
         border: 1px solid #333;
         background-color: rgba(0, 0, 0, 0.6); 
@@ -71,7 +72,7 @@ st.markdown("""
     .stButton button:hover {
         border-color: #00d2ff;
         color: #00d2ff;
-        transform: scale(1.02);
+        transform: translateY(-3px);
         background-color: rgba(0, 0, 0, 0.8);
     }
     </style>
@@ -87,25 +88,22 @@ except:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- 5. THE BRAIN (Now with Memory!) ---
+# --- 5. THE BRAIN ---
 def get_vibe_check():
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # 1. BUILD HISTORY
     conversation_history = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "model"
         conversation_history.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-    # 2. THE SYSTEM INSTRUCTION
     system_prompt = (
-        "You are DJ VibeCheck. "
-        "Goal: Recommend 5 songs based on the user's mood.\n"
+        "You are DJ VibeCheck. Goal: Recommend 5 songs based on the user's mood.\n"
         "RULES:\n"
-        "1. IF the user says 'I'm not sure': Ask exactly 3 short, simple questions to help identify their mood. Do not recommend songs yet.\n"
+        "1. IF the user says 'I'm not sure' or asks for help identifying mood: Ask exactly 3 short, simple questions to help identify their mood. Do not recommend songs yet.\n"
         "2. IF the user answers your questions OR states a mood: \n"
-        "   - First, briefly state what mood you think they are feeling (e.g., 'It sounds like you're feeling reflective...').\n"
+        "   - First, briefly state what mood you think they are feeling.\n"
         "   - Then, provide the playlist.\n"
         "3. IF the input is gibberish/random: Say 'ERROR_INVALID'.\n\n"
         "PLAYLIST FORMAT (Strict):\n"
@@ -114,7 +112,6 @@ def get_vibe_check():
         "   *One short sentence description.*"
     )
 
-    # 3. SEND REQUEST
     data = {
         "contents": conversation_history,
         "systemInstruction": {"parts": [{"text": system_prompt}]}
@@ -128,9 +125,15 @@ def get_vibe_check():
     except:
         return "⚠️ Network Error."
 
-# --- 6. SIDEBAR ---
+# --- 6. SIDEBAR (With Description) ---
 with st.sidebar:
-    st.title("🎧 Control Panel")
+    st.title("🎧 VibeChecker AI")
+    st.markdown("### What is VibeChecker?")
+    st.info(
+        "VibeChecker is an AI-powered music curator that listens to how you feel and builds the perfect playlist instantly.\n\n"
+        "Instead of searching for songs manually, just tell VibeChecker your mood (e.g., 'Sad', 'Hyped', 'Chill') and get a custom playlist with YouTube links."
+    )
+    st.write("---")
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
@@ -139,30 +142,30 @@ with st.sidebar:
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
 
-# HERO SECTION (Quick Buttons)
+# HERO SECTION (Symmetric Layout)
 if len(st.session_state.messages) == 0:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #fff; text-shadow: 1px 1px 2px black;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
     
-    # ROW 1
-    col1, col2, col3, col4 = st.columns(4)
+    # We use a placeholder to capture clicks
     clicked_mood = None
-    
+
+    # ROW 1: 3 Buttons (Symmetric Top)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("⚡ Energetic"): clicked_mood = "I'm feeling super energetic!"
     with col2:
-        if st.button("🌧️ Melancholy"): clicked_mood = "I'm feeling sad and melancholy."
-    with col3:
         if st.button("🧘‍♂️ Chill"): clicked_mood = "I want to relax and chill."
+    with col3:
+        if st.button("🌧️ Melancholy"): clicked_mood = "I'm feeling sad and melancholy."
+
+    # ROW 2: 2 Buttons (Symmetric Bottom)
+    col4, col5 = st.columns(2)
     with col4:
         if st.button("💔 Heartbroken"): clicked_mood = "I'm heartbroken."
-
-    # ROW 2 - The New Feature
-    st.write("") # Spacer
-    c1, c2, c3 = st.columns([1, 2, 1]) # Centered column
-    with c2:
-        # This triggers the Question Flow
-        if st.button("🤔 Not sure how I feel?"): 
+    with col5:
+        # The AI Question feature
+        if st.button("🤔 Not sure?"): 
             clicked_mood = "I'm not sure how I feel. Ask me 3 simple questions to figure it out."
 
     if clicked_mood:
@@ -175,19 +178,17 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# INPUT & LOGIC
+# INPUT
 if prompt := st.chat_input("Type your mood or answer here..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
-# GENERATE RESPONSE
+# LOGIC
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🎧"):
         with st.spinner("Thinking..."):
             response = get_vibe_check()
-            
             if "ERROR_INVALID" in response:
                 response = "🚫 I didn't catch that. Tell me a real emotion!"
-            
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
