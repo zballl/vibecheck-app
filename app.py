@@ -16,8 +16,7 @@ except:
 
 # --- 3. DIRECT CONNECTION FUNCTION ---
 def get_gemini_response(prompt):
-    # UPDATED: Using 'gemini-flash-latest'.
-    # This automatically finds the working version for your account.
+    # Using 'gemini-flash-latest' as it works for you
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     
     headers = {'Content-Type': 'application/json'}
@@ -27,19 +26,16 @@ def get_gemini_response(prompt):
         }]
     }
     
-    # Send request
     response = requests.post(url, headers=headers, json=data)
     
-    # Handle response
     if response.status_code == 200:
         try:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
         except:
             return "Error parsing response. Try again."
+    elif response.status_code == 429:
+        return "⚠️ Quota Limit. Please wait 1 minute and try again."
     else:
-        # Fallback: If Flash limit is 0, try Pro
-        if response.status_code == 429:
-             return "⚠️ Quota Limit. Please wait 1 minute and try again, or create a new Key."
         return f"Google Error {response.status_code}: {response.text}"
 
 # --- 4. THE APP UI ---
@@ -49,15 +45,18 @@ if st.button("Generate Playlist"):
     if not mood:
         st.warning("Please tell me your mood first!")
     else:
-        with st.spinner("Mixing tracks... 🎧"):
-            # DJ Instructions
+        with st.spinner("Curating tracks... 🎧"):
+            # --- UPDATED INSTRUCTIONS FOR SIMPLE OUTPUT ---
             dj_prompt = (
                 f"You are DJ VibeCheck. Recommend 5 songs for this mood: '{mood}'.\n"
-                "For EACH song, provide a clickable YouTube Search link in this format:\n"
-                "1. **Song Title** - Artist [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
-                "   *Reason for choosing this song.*"
+                "STRICT FORMATTING RULES:\n"
+                "- Do NOT write an intro or outro.\n"
+                "- Only list the 5 songs.\n"
+                "- Use exactly this format for each song:\n\n"
+                "1. **Song Title** - Artist\n"
+                "   [▶️ Listen on YouTube](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+                "   *One short sentence explaining the vibe.*\n"
             )
             
-            # Call the function
             result = get_gemini_response(dj_prompt)
             st.markdown(result)
