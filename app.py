@@ -36,7 +36,7 @@ st.markdown("""
     header {visibility: hidden;}
     
     .title-text {
-        font-size: 80px;
+        font-size: 160px;
         font-weight: 900;
         background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
         -webkit-background-clip: text;
@@ -181,3 +181,4 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 response = "🚫 I didn't catch that. Tell me a real emotion!"
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
+
