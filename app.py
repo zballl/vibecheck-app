@@ -93,13 +93,12 @@ def get_vibe_check():
     headers = {'Content-Type': 'application/json'}
     
     # 1. BUILD HISTORY
-    # We convert Streamlit history to Google API format ('user' -> 'user', 'assistant' -> 'model')
     conversation_history = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "model"
         conversation_history.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-    # 2. THE SYSTEM INSTRUCTION (The DJ Persona)
+    # 2. THE SYSTEM INSTRUCTION
     system_prompt = (
         "You are DJ VibeCheck. "
         "Goal: Recommend 5 songs based on the user's mood.\n"
@@ -192,3 +191,4 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
+
