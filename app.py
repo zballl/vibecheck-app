@@ -1,40 +1,59 @@
 import streamlit as st
 import requests
+import json
 
-st.title("🔧 VibeCheck Diagnostic Tool")
+# --- 1. SETUP PAGE ---
+st.set_page_config(page_title="VibeCheck", page_icon="🎵")
+st.title("🎵 VibeCheck")
+st.write("Tell me how you feel, and I'll generate a playlist.")
 
-# 1. Get the Key
+# --- 2. GET API KEY ---
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    st.success("✅ API Key found in Secrets.")
 except:
-    st.error("❌ API Key missing.")
+    st.error("⚠️ API Key missing! Check your Secrets.")
     st.stop()
 
-# 2. Ask Google what models are available
-st.write("Testing connection to Google...")
-
-url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-response = requests.get(url)
-
-if response.status_code == 200:
-    st.success("✅ Connection Successful! Here are the models your Key can access:")
-    models = response.json().get('models', [])
-    found_gemini = False
+# --- 3. DIRECT CONNECTION FUNCTION ---
+def get_gemini_response(prompt):
+    # UPDATED: Using 'gemini-2.0-flash' because your key supports it!
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
-    for m in models:
-        # Check if we have gemini-pro or gemini-1.5-flash
-        if 'gemini' in m['name']:
-            st.write(f"- `{m['name']}`")
-            found_gemini = True
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
     
-    if found_gemini:
-        st.balloons()
-        st.info("👇 **NEXT STEP:** Go back to GitHub and paste the 'Final Working Code' I gave you previously. It will work now!")
+    # Send request
+    response = requests.post(url, headers=headers, json=data)
+    
+    # Handle response
+    if response.status_code == 200:
+        try:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        except:
+            return "Error parsing response. Try again."
     else:
-        st.warning("⚠️ Connected to Google, but no Gemini models found. (Region locked?)")
+        return f"Google Error {response.status_code}: {response.text}"
 
-else:
-    st.error(f"❌ Connection Failed. Error {response.status_code}:")
-    st.code(response.text)
-    st.write("This means the API Key is invalid or the API is disabled for this project.")
+# --- 4. THE APP UI ---
+mood = st.text_input("How are you feeling?", placeholder="e.g. Happy, Anxious, Excited")
+
+if st.button("Generate Playlist"):
+    if not mood:
+        st.warning("Please tell me your mood first!")
+    else:
+        with st.spinner("Mixing tracks with Gemini 2.0... 🎧"):
+            # DJ Instructions
+            dj_prompt = (
+                f"You are DJ VibeCheck. Recommend 5 songs for this mood: '{mood}'.\n"
+                "For EACH song, provide a clickable YouTube Search link in this format:\n"
+                "1. **Song Title** - Artist [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+                "   *Reason for choosing this song.*"
+            )
+            
+            # Call the function
+            result = get_gemini_response(dj_prompt)
+            st.markdown(result)
