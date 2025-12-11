@@ -36,7 +36,7 @@ st.markdown("""
     header {visibility: hidden;}
     
     .title-text {
-        font-size: 160px;
+        font-size: 80px;
         font-weight: 900;
         background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
         -webkit-background-clip: text;
@@ -55,12 +55,11 @@ st.markdown("""
         text-shadow: 1px 1px 2px black;
     }
     
-    /* Make buttons huge and symmetric */
     .stButton button {
         width: 100%;
-        border-radius: 15px;
-        height: 70px;
-        font-size: 18px;
+        border-radius: 12px;
+        height: 60px;
+        font-size: 16px;
         font-weight: 600;
         border: 1px solid #333;
         background-color: rgba(0, 0, 0, 0.6); 
@@ -72,7 +71,7 @@ st.markdown("""
     .stButton button:hover {
         border-color: #00d2ff;
         color: #00d2ff;
-        transform: translateY(-3px);
+        transform: scale(1.02);
         background-color: rgba(0, 0, 0, 0.8);
     }
     </style>
@@ -88,25 +87,35 @@ except:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- 5. THE BRAIN ---
+# --- 5. THE BRAIN (Now with Memory!) ---
 def get_vibe_check():
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
+    # 1. BUILD HISTORY
+    # We convert Streamlit history to Google API format ('user' -> 'user', 'assistant' -> 'model')
     conversation_history = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "model"
         conversation_history.append({"role": role, "parts": [{"text": msg["content"]}]})
 
+    # 2. THE SYSTEM INSTRUCTION (The DJ Persona)
     system_prompt = (
-        "You are DJ VibeCheck. Recommend 5 songs based on mood.\n"
+        "You are DJ VibeCheck. "
+        "Goal: Recommend 5 songs based on the user's mood.\n"
         "RULES:\n"
-        "1. IF user says 'I'm not sure': Ask 3 short questions.\n"
-        "2. IF user answers/states mood: State the mood, then list songs.\n"
-        "3. IF gibberish: Say 'ERROR_INVALID'.\n\n"
-        "FORMAT: 1. **Song** - Artist [▶️ Listen](Link) *Desc*."
+        "1. IF the user says 'I'm not sure': Ask exactly 3 short, simple questions to help identify their mood. Do not recommend songs yet.\n"
+        "2. IF the user answers your questions OR states a mood: \n"
+        "   - First, briefly state what mood you think they are feeling (e.g., 'It sounds like you're feeling reflective...').\n"
+        "   - Then, provide the playlist.\n"
+        "3. IF the input is gibberish/random: Say 'ERROR_INVALID'.\n\n"
+        "PLAYLIST FORMAT (Strict):\n"
+        "1. **Song Title** - Artist\n"
+        "   [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+        "   *One short sentence description.*"
     )
 
+    # 3. SEND REQUEST
     data = {
         "contents": conversation_history,
         "systemInstruction": {"parts": [{"text": system_prompt}]}
@@ -131,30 +140,30 @@ with st.sidebar:
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
 
-# HERO SECTION (SYMMETRIC LAYOUT)
+# HERO SECTION (Quick Buttons)
 if len(st.session_state.messages) == 0:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #fff; text-shadow: 1px 1px 2px black;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
     
-    # We use a placeholder to capture clicks
+    # ROW 1
+    col1, col2, col3, col4 = st.columns(4)
     clicked_mood = None
-
-    # ROW 1: 3 Buttons (Symmetric Top)
-    col1, col2, col3 = st.columns(3)
+    
     with col1:
         if st.button("⚡ Energetic"): clicked_mood = "I'm feeling super energetic!"
     with col2:
-        if st.button("🧘‍♂️ Chill"): clicked_mood = "I want to relax and chill."
-    with col3:
         if st.button("🌧️ Melancholy"): clicked_mood = "I'm feeling sad and melancholy."
-
-    # ROW 2: 2 Buttons (Symmetric Bottom)
-    col4, col5 = st.columns(2)
+    with col3:
+        if st.button("🧘‍♂️ Chill"): clicked_mood = "I want to relax and chill."
     with col4:
         if st.button("💔 Heartbroken"): clicked_mood = "I'm heartbroken."
-    with col5:
-        # The AI Question feature
-        if st.button("🤔 Not sure?"): 
+
+    # ROW 2 - The New Feature
+    st.write("") # Spacer
+    c1, c2, c3 = st.columns([1, 2, 1]) # Centered column
+    with c2:
+        # This triggers the Question Flow
+        if st.button("🤔 Not sure how I feel?"): 
             clicked_mood = "I'm not sure how I feel. Ask me 3 simple questions to figure it out."
 
     if clicked_mood:
@@ -167,18 +176,19 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# INPUT
+# INPUT & LOGIC
 if prompt := st.chat_input("Type your mood or answer here..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
-# LOGIC
+# GENERATE RESPONSE
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🎧"):
         with st.spinner("Thinking..."):
             response = get_vibe_check()
+            
             if "ERROR_INVALID" in response:
                 response = "🚫 I didn't catch that. Tell me a real emotion!"
+            
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
-
