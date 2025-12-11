@@ -12,7 +12,7 @@ def get_base64_of_bin_file(bin_file):
         data = f.read()
     return base64.b64encode(data).decode()
 
-# --- 3. CUSTOM CSS (The Dashboard Look) ---
+# --- 3. CUSTOM CSS ---
 try:
     img_base64 = get_base64_of_bin_file("background.jpeg")
     background_style = f"""
@@ -32,12 +32,10 @@ st.markdown(background_style, unsafe_allow_html=True)
 
 st.markdown("""
     <style>
-    /* Clean up UI */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* TITLE STYLE */
     .main-title {
         font-size: 60px;
         font-weight: 800;
@@ -54,14 +52,14 @@ st.markdown("""
         margin-bottom: 40px;
     }
 
-    /* CARD STYLE (The White Boxes) */
+    /* CARD STYLE */
     .song-card {
         background-color: white;
         color: black;
         padding: 20px;
         border-radius: 15px;
         margin-bottom: 15px;
-        border-left: 10px solid #FF0080; /* Pink accent strip */
+        border-left: 10px solid #FF0080;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .song-title { font-size: 20px; font-weight: bold; margin: 0; }
@@ -79,7 +77,7 @@ st.markdown("""
         margin-top: 5px;
     }
     
-    /* BUTTONS STYLE (Pill Shape) */
+    /* BUTTONS STYLE */
     .stButton button {
         border-radius: 25px;
         height: 50px;
@@ -94,12 +92,6 @@ st.markdown("""
         color: white;
         transform: translateY(-2px);
     }
-    
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background-color: #111;
-        border-right: 1px solid #333;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -111,34 +103,40 @@ except:
     st.stop()
 
 # --- 5. SESSION STATE ---
-if "past_moods" not in st.session_state:
-    st.session_state.past_moods = []
-if "current_playlist" not in st.session_state:
-    st.session_state.current_playlist = None
-if "current_mood_text" not in st.session_state:
-    st.session_state.current_mood_text = ""
+# We use 'view_mode' to switch between "Home", "Questions", and "Playlist"
+if "view_mode" not in st.session_state:
+    st.session_state.view_mode = "home" 
+if "playlist_data" not in st.session_state:
+    st.session_state.playlist_data = None
+if "questions_text" not in st.session_state:
+    st.session_state.questions_text = ""
+if "current_input_value" not in st.session_state:
+    st.session_state.current_input_value = ""
 
-# --- 6. THE BRAIN (Now outputs JSON for Cards) ---
-def get_music_data(mood):
+# --- 6. THE BRAIN ---
+def call_gemini(prompt, output_type="json"):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # We ask for JSON format to build the cards
-    prompt = (
-        f"User Mood: '{mood}'\n"
-        "TASK: detailed analysis of mood. If valid, return a JSON list of 5 songs.\n"
-        "OUTPUT FORMAT: A raw JSON list only. No markdown. Example: \n"
-        '[{"title": "Song Name", "artist": "Artist", "desc": "Why it fits.", "link": "https://youtube.com..."}]'
-    )
+    if output_type == "json":
+        full_prompt = (
+            f"{prompt}\n"
+            "OUTPUT FORMAT: A raw JSON list only. No markdown. Example: \n"
+            '[{"title": "Song", "artist": "Artist", "desc": "Reason", "link": "https://youtube..."}]'
+        )
+    else:
+        full_prompt = prompt
+
+    data = {"contents": [{"parts": [{"text": full_prompt}]}]}
     
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         res = requests.post(url, headers=headers, json=data)
         if res.status_code == 200:
-            text_response = res.json()['candidates'][0]['content']['parts'][0]['text']
-            # Clean up response to ensure valid JSON
-            clean_json = text_response.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_json) # Convert text to Python List
+            text = res.json()['candidates'][0]['content']['parts'][0]['text']
+            if output_type == "json":
+                clean_json = text.replace("```json", "").replace("```", "").strip()
+                return json.loads(clean_json)
+            return text
     except:
         return None
     return None
@@ -148,82 +146,109 @@ with st.sidebar:
     st.markdown("## 🎧 VibeChecker")
     st.markdown("*Your elegant AI music curator.*")
     st.write("---")
-    
-    st.markdown("### How to Use")
-    st.markdown("1. Select a mood\n2. View recommendations\n3. Click to listen")
-    
-    st.write("---")
-    st.markdown("### Past Moods")
-    for m in st.session_state.past_moods[-5:]: # Show last 5
-        st.caption(f"• {m}")
-        
-    st.write("---")
-    if st.button("🎲 Surprise Me"):
-        st.session_state.current_mood_text = "Surprise me with something random but amazing"
-        # Trigger generation immediately
-        data = get_music_data("Surprise me with something random")
-        if data:
-            st.session_state.current_playlist = data
-            st.session_state.past_moods.append("Surprise Me")
-            st.rerun()
+    if st.button("🏠 Reset App"):
+        st.session_state.view_mode = "home"
+        st.session_state.current_input_value = ""
+        st.rerun()
 
 # --- 8. MAIN DASHBOARD ---
 
-# Header
 st.markdown('<div class="main-title">VibeChecker</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Your Personal Mood-Based Music Curator</div>', unsafe_allow_html=True)
 st.write("")
 
-# Button Row
+# --- BUTTON LOGIC (IMMEDIATE TRIGGER) ---
 col1, col2, col3, col4 = st.columns(4)
-selected_mood = None
 
-with col1:
-    if st.button("⚡ Energetic"): selected_mood = "Energetic"
-with col2:
-    if st.button("☂️ Melancholy"): selected_mood = "Melancholy"
-with col3:
-    if st.button("🧘 Chill"): selected_mood = "Chill"
-with col4:
-    if st.button("💔 Heartbroken"): selected_mood = "Heartbroken"
+# We use variables to capture clicks
+click_energy = col1.button("⚡ Energetic")
+click_sad = col2.button("☂️ Melancholy")
+click_chill = col3.button("🧘 Chill")
+click_heart = col4.button("💔 Heartbroken")
 
-# Handle Button Clicks
-if selected_mood:
-    st.session_state.current_mood_text = selected_mood
-    with st.spinner(f"Curating {selected_mood} vibes..."):
-        data = get_music_data(selected_mood)
-        if data:
-            st.session_state.current_playlist = data
-            st.session_state.past_moods.append(selected_mood)
+# Logic: If any button is clicked, FORCE immediate generation
+if click_energy:
+    st.session_state.current_input_value = "Energetic"
+    with st.spinner("Generating Energetic Vibes..."):
+        st.session_state.playlist_data = call_gemini("User feels Energetic. Recommend 5 songs.", "json")
+        st.session_state.view_mode = "playlist"
+    st.rerun()
 
-# Input Bar (Centered)
-user_input = st.text_input("", placeholder="Type your mood here...", value=st.session_state.current_mood_text)
+if click_sad:
+    st.session_state.current_input_value = "Melancholy"
+    with st.spinner("Generating Melancholy Vibes..."):
+        st.session_state.playlist_data = call_gemini("User feels Melancholy. Recommend 5 songs.", "json")
+        st.session_state.view_mode = "playlist"
+    st.rerun()
 
-# Logic for typing in the box
-if user_input and user_input != st.session_state.current_mood_text:
-    st.session_state.current_mood_text = user_input
-    with st.spinner(f"Analyzing '{user_input}'..."):
-        data = get_music_data(user_input)
-        if data:
-            st.session_state.current_playlist = data
-            st.session_state.past_moods.append(user_input)
-            st.rerun()
+if click_chill:
+    st.session_state.current_input_value = "Chill"
+    with st.spinner("Generating Chill Vibes..."):
+        st.session_state.playlist_data = call_gemini("User feels Chill. Recommend 5 songs.", "json")
+        st.session_state.view_mode = "playlist"
+    st.rerun()
 
-# --- 9. RESULTS SECTION (THE CARDS) ---
+if click_heart:
+    st.session_state.current_input_value = "Heartbroken"
+    with st.spinner("Generating Heartbroken Vibes..."):
+        st.session_state.playlist_data = call_gemini("User feels Heartbroken. Recommend 5 songs.", "json")
+        st.session_state.view_mode = "playlist"
+    st.rerun()
+
+# --- THE "NOT SURE" FEATURE ---
 st.write("")
-if st.session_state.current_playlist:
-    st.markdown(f"### Recommended for {st.session_state.current_mood_text}")
+if st.button("🤔 Not sure how I feel? Help me."):
+    with st.spinner("Consulting AI Therapist..."):
+        # Ask AI for questions
+        q_prompt = "The user is unsure of their mood. Ask exactly 3 short, creative questions to help determine their vibe. Format as a numbered list."
+        st.session_state.questions_text = call_gemini(q_prompt, "text")
+        st.session_state.view_mode = "questions"
+        st.session_state.current_input_value = "" # Clear box for answer
+    st.rerun()
+
+# --- DYNAMIC INPUT BAR ---
+# Placeholder changes based on mode
+placeholder_text = "Type your mood here..."
+if st.session_state.view_mode == "questions":
+    placeholder_text = "Type your answers to the questions here..."
+
+user_input = st.text_input("", placeholder=placeholder_text, value=st.session_state.current_input_value)
+
+# Logic for Typing (Pressing Enter)
+if user_input and user_input != st.session_state.current_input_value:
+    st.session_state.current_input_value = user_input
     
-    # Loop through the data and create White Cards
-    for song in st.session_state.current_playlist:
-        # We use HTML to style the card exactly like the image
+    # If we are answering questions, include context
+    if st.session_state.view_mode == "questions":
+        prompt = f"User answered these questions: {user_input}. Determine mood and recommend 5 songs."
+    else:
+        prompt = f"User feels: {user_input}. Recommend 5 songs."
+        
+    with st.spinner("Curating..."):
+        st.session_state.playlist_data = call_gemini(prompt, "json")
+        st.session_state.view_mode = "playlist"
+    st.rerun()
+
+# --- DISPLAY SECTION ---
+
+# MODE 1: QUESTIONS (AI Therapist)
+if st.session_state.view_mode == "questions" and st.session_state.questions_text:
+    st.info("Please answer these questions in the box above:")
+    st.markdown(f"### 🤖 AI Questions:\n{st.session_state.questions_text}")
+
+# MODE 2: PLAYLIST (Cards)
+elif st.session_state.view_mode == "playlist" and st.session_state.playlist_data:
+    st.write("---")
+    st.markdown(f"### 🎶 Your Vibe Playlist")
+    
+    for song in st.session_state.playlist_data:
         st.markdown(f"""
         <div class="song-card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <p class="song-title">{song['title']}</p>
-                    <p class="song-artist">{song['artist']}</p>
-                    <p class="song-desc">"{song['desc']}"</p>
+                    <p class="song-title">{song.get('title', 'Unknown')}</p>
+                    <p class="song-artist">{song.get('artist', 'Unknown')}</p>
+                    <p class="song-desc">"{song.get('desc', 'Great vibe')}"</p>
                 </div>
                 <div>
                     <a href="{song.get('link', '#')}" target="_blank" class="listen-btn">▶ Listen</a>
@@ -231,8 +256,3 @@ if st.session_state.current_playlist:
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-# Question Feature (Kept as requested)
-st.write("---")
-if st.button("🤔 Not sure how I feel? Help me."):
-    st.info("Ask yourself: Do you want high energy or low energy? Do you want lyrics or instrumental?")
