@@ -1,49 +1,71 @@
 import streamlit as st
 import requests
+import base64
 
 # --- 1. SETUP PAGE CONFIG ---
 st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="centered")
 
-# --- 2. CUSTOM DESIGN (CSS) ---
+# --- 2. FUNCTION TO LOAD LOCAL IMAGE ---
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+# --- 3. CUSTOM DESIGN (CSS) ---
+# We use a try-except block in case the image hasn't uploaded yet
+try:
+    img_base64 = get_base64_of_bin_file("background.jpeg")
+    background_style = f"""
+        <style>
+        .stApp {{
+            background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url("data:image/jpeg;base64,{img_base64}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        </style>
+    """
+except:
+    # Fallback if image is missing (prevents crash)
+    background_style = """
+        <style>
+        .stApp {
+            background-color: #0E1117;
+        }
+        </style>
+    """
+
+st.markdown(background_style, unsafe_allow_html=True)
+
 st.markdown("""
     <style>
-    /* Hide default Streamlit elements */
+    /* Hide default elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* --- BACKGROUND IMAGE SETTINGS --- */
-    .stApp {
-        /* Replace the URL below with your own image link! */
-        background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url("https://images.unsplash.com/photo-1514525253440-b393452e8d26?q=80&w=2800&auto=format&fit=crop");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }
+    header {visibility: hidden;}
     
     /* BIGGER LOGO STYLE */
     .title-text {
         font-size: 80px;
         font-weight: 900;
-        background: -webkit-linear-gradient(45deg, #FF0080, #7928CA);
+        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5); /* Cyan to Blue gradient matches equalizer */
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
         line-height: 1.1;
         padding-bottom: 10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5); /* Shadow for readability */
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
     }
     
-    /* Subtitle Style */
     .subtitle-text {
         text-align: center;
         font-size: 20px;
-        color: #ddd; /* Lighter text for dark background */
+        color: #ddd;
         margin-bottom: 40px;
         text-shadow: 1px 1px 2px black;
     }
     
-    /* Quick Select Buttons */
+    /* Button Style */
     .stButton button {
         width: 100%;
         border-radius: 12px;
@@ -51,29 +73,28 @@ st.markdown("""
         font-size: 16px;
         font-weight: 600;
         border: 1px solid #333;
-        background-color: rgba(14, 17, 23, 0.8); /* Semi-transparent */
+        background-color: rgba(0, 0, 0, 0.6); 
         color: white;
         transition: all 0.3s;
-        backdrop-filter: blur(5px); /* Cool blur effect */
+        backdrop-filter: blur(5px);
     }
     
     .stButton button:hover {
-        border-color: #FF0080;
-        color: #FF0080;
+        border-color: #00d2ff;
+        color: #00d2ff;
         transform: scale(1.02);
-        background-color: rgba(14, 17, 23, 1);
+        background-color: rgba(0, 0, 0, 0.8);
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. API SETUP ---
+# --- 4. API SETUP ---
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
     st.error("⚠️ API Key missing! Check your Secrets.")
     st.stop()
 
-# --- 4. SESSION STATE ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -101,23 +122,15 @@ def get_vibe_check(user_prompt):
 with st.sidebar:
     st.title("🎧 Control Panel")
     st.markdown("I am your personal AI DJ.")
-    st.info(
-        "**How to use:**\n"
-        "1. Select a mood or type your own.\n"
-        "2. Click the links to listen."
-    )
-    st.write("---")
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
 
 # --- 7. MAIN INTERFACE ---
-
-# A. BIGGER Title
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
 
-# B. HERO SECTION
+# HERO SECTION
 if len(st.session_state.messages) == 0:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #fff; text-shadow: 1px 1px 2px black;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
@@ -138,23 +151,7 @@ if len(st.session_state.messages) == 0:
         st.session_state.messages.append({"role": "user", "content": clicked_mood})
         st.rerun()
 
-# C. CHAT HISTORY
+# CHAT HISTORY
 for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"] == "user" else "🎧"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
-
-# D. CHAT INPUT
-if prompt := st.chat_input("Type your mood here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant", avatar="🎧"):
-        with st.spinner("Curating tracks..."):
-            response = get_vibe_check(prompt)
-            if "ERROR_INVALID" in response:
-                response = "🚫 I didn't catch that vibe. Try telling me an emotion!"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+    avatar = "👤
 
