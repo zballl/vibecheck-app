@@ -1,4 +1,63 @@
 import streamlit as st
-st.title("✅ SUCCESS: The app is updating!")
-st.write("If you see this, the connection to GitHub is working.")
-st.write(f"My Secret Key starts with: {st.secrets['GOOGLE_API_KEY'][:5]}...")
+import requests
+import json
+
+# --- 1. SETUP PAGE ---
+st.set_page_config(page_title="VibeCheck", page_icon="🎵")
+st.title("🎵 VibeCheck")
+st.write("Tell me how you feel, and I'll generate a playlist.")
+
+# --- 2. GET API KEY ---
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+except:
+    st.error("⚠️ API Key missing! Check your Secrets.")
+    st.stop()
+
+# --- 3. THE DIRECT CONNECTION FUNCTION ---
+def get_gemini_response(prompt):
+    # We use 'gemini-pro' because '1.5-flash' was blocked on your server.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    # Send the signal directly to Google
+    response = requests.post(url, headers=headers, json=data)
+    
+    # Handle the response
+    if response.status_code == 200:
+        try:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        except:
+            return "Error parsing response. Try again."
+    else:
+        return f"Google Error {response.status_code}: {response.text}"
+
+# --- 4. THE APP UI ---
+mood = st.text_input("How are you feeling?", placeholder="e.g. Happy, Anxious, Excited")
+
+if st.button("Generate Playlist"):
+    if not mood:
+        st.warning("Please tell me your mood first!")
+    else:
+        with st.spinner("Mixing tracks... 🎧"):
+            # DJ Instructions
+            dj_prompt = (
+                f"You are DJ VibeCheck. Recommend 5 songs for this mood: '{mood}'.\n"
+                "For EACH song, provide a clickable YouTube Search link in this format:\n"
+                "1. **Song Title** - Artist [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+                "   *Reason for choosing this song.*"
+            )
+            
+            # Call the function
+            result = get_gemini_response(dj_prompt)
+            st.markdown(result)
+            
+            # Call the function
+            result = get_gemini_response(dj_prompt)
+            st.markdown(result)
