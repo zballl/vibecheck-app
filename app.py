@@ -7,31 +7,31 @@ st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="centered"
 # --- 2. CUSTOM DESIGN (CSS) ---
 st.markdown("""
     <style>
-    /* Hide default Streamlit elements */
+    /* Hide the 3-dot menu and footer, BUT keep the header visible so Sidebar works */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
     
-    /* Gradient Title */
+    /* 1. BIGGER LOGO STYLE */
     .title-text {
-        font-size: 50px;
-        font-weight: 800;
+        font-size: 80px; /* Increased from 50px */
+        font-weight: 900;
         background: -webkit-linear-gradient(45deg, #FF0080, #7928CA);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
-        margin-bottom: 0px;
+        line-height: 1.1; /* Keeps it tight */
+        padding-bottom: 10px;
     }
     
-    /* Subtitle */
+    /* Subtitle Style */
     .subtitle-text {
         text-align: center;
-        font-size: 18px;
-        color: #888;
-        margin-bottom: 30px;
+        font-size: 20px;
+        color: #b0b0b0;
+        margin-bottom: 40px;
     }
     
-    /* Style the Quick-Select Buttons to look like cards */
+    /* Quick Select Buttons */
     .stButton button {
         width: 100%;
         border-radius: 12px;
@@ -83,30 +83,33 @@ def get_vibe_check(user_prompt):
     except:
         return "⚠️ Network Error."
 
-# --- 6. SIDEBAR ---
+# --- 6. SIDEBAR (Now Visible!) ---
 with st.sidebar:
-    st.markdown("### 🎧 DJ Control Panel")
-    st.write("This AI curates music based on your exact emotional state.")
+    st.title("🎧 Control Panel")
+    st.markdown("I am your personal AI DJ.")
+    st.info(
+        "**How to use:**\n"
+        "1. Select a mood or type your own.\n"
+        "2. Click the links to listen."
+    )
     st.write("---")
-    if st.button("🗑️ Clear Chat"):
+    if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
 
 # --- 7. MAIN INTERFACE ---
 
-# A. Show Title
+# A. BIGGER Title
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle-text">Your personal AI Music Curator</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
 
 # B. HERO SECTION (Only shows if chat is empty)
 if len(st.session_state.messages) == 0:
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>How are you feeling right now?</h3>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #fff;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
     
-    # 4 Columns for Quick Buttons
+    # Quick Buttons
     col1, col2, col3, col4 = st.columns(4)
-    
-    # We use a placeholder variable to capture button clicks
     clicked_mood = None
     
     with col1:
@@ -118,32 +121,26 @@ if len(st.session_state.messages) == 0:
     with col4:
         if st.button("💔 Heartbroken"): clicked_mood = "I'm heartbroken and need comfort."
 
-    # If a button was clicked, add it to chat immediately
     if clicked_mood:
         st.session_state.messages.append({"role": "user", "content": clicked_mood})
-        st.rerun() # Refresh to show the chat UI
+        st.rerun()
 
-# C. CHAT HISTORY (Shows messages)
+# C. CHAT HISTORY
 for msg in st.session_state.messages:
-    # We use specific avatars here
     avatar = "👤" if msg["role"] == "user" else "🎧"
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
 # D. CHAT INPUT
 if prompt := st.chat_input("Type your mood here..."):
-    # 1. User Message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
 
-    # 2. AI Response
     with st.chat_message("assistant", avatar="🎧"):
-        with st.spinner("Spinning the tracks..."):
+        with st.spinner("Curating tracks..."):
             response = get_vibe_check(prompt)
-            
             if "ERROR_INVALID" in response:
                 response = "🚫 I didn't catch that vibe. Try telling me an emotion!"
-            
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
