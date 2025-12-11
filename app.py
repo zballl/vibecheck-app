@@ -1,11 +1,8 @@
 import streamlit as st
 import requests
-import json
 
-# --- 1. SETUP PAGE ---
-st.set_page_config(page_title="VibeCheck", page_icon="🎵")
-st.title("🎵 VibeCheck")
-st.write("Tell me how you feel, and I'll generate a playlist.")
+# --- 1. SETUP PAGE CONFIG ---
+st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="centered")
 
 # --- 2. GET API KEY ---
 try:
@@ -14,51 +11,69 @@ except:
     st.error("⚠️ API Key missing! Check your Secrets.")
     st.stop()
 
-# --- 3. DIRECT CONNECTION FUNCTION ---
-def get_gemini_response(prompt):
+# --- 3. HEADER (Simple Text as requested) ---
+st.title("🎵 VibeChecker")
+st.write("Your personal mood music curator.")
+
+# --- 4. INITIALIZE CHAT HISTORY ---
+# This remembers the chat so it looks like a real conversation
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Display previous messages (The Chat Bubbles)
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# --- 5. THE BRAIN (Direct Connection) ---
+def get_vibechecker_response(user_prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
     
-    response = requests.post(url, headers=headers, json=data)
+    # The DJ Persona & Instructions
+    full_prompt = (
+        f"User Input: '{user_prompt}'\n\n"
+        "TASK: Analyze if the input is a valid emotion/mood.\n"
+        "1. IF GIBBERISH/RANDOM: Output exactly 'ERROR_INVALID'.\n"
+        "2. IF VALID: Recommend 5 songs.\n"
+        "FORMAT:\n"
+        "- No intro/outro text.\n"
+        "- 1. **Song Title** - Artist\n"
+        "  [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+        "  *One short sentence description.*"
+    )
+
+    data = {"contents": [{"parts": [{"text": full_prompt}]}]}
     
-    if response.status_code == 200:
-        try:
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
-        except:
-            return "Error parsing response."
-    elif response.status_code == 429:
-        return "⚠️ Quota Limit. Please wait 1 minute."
-    else:
-        return f"Google Error {response.status_code}"
+        else:
+            return "⚠️ I'm having trouble connecting to the vibe stream. Try again."
+    except:
+        return "⚠️ Connection error."
 
-# --- 4. THE APP UI ---
-mood = st.text_input("How are you feeling?", placeholder="e.g. Happy, Anxious, Excited")
+# --- 6. THE CHAT INPUT (Bottom Bar) ---
+# This creates the text bar at the bottom like WhatsApp/Math Buddy
+if prompt := st.chat_input("How are you feeling right now?"):
+    
+    # 1. Show User Message Immediately
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    # Save to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-if st.button("Generate Playlist"):
-    if not mood:
-        st.warning("Please tell me your mood first!")
-    else:
-        with st.spinner("Analyzing your vibe... 🧐"):
-            # --- INTELLIGENT PROMPT WITH GUARDRAILS ---
-            dj_prompt = (
-                f"User Input: '{mood}'\n\n"
-                "TASK: Analyze if the User Input is a valid human emotion, mood, or vibe.\n"
-                "RULES:\n"
-                "1. IF the input is gibberish, random keys (like 'fajs;fhasf;', 'asdf'), or NOT a feeling: Output ONLY the word 'ERROR_INVALID'.\n"
-                "2. IF the input is a valid emotion: Recommend 5 songs.\n\n"
-                "FORMATTING FOR VALID SONGS:\n"
-                "- No intro text.\n"
-                "- Format: 1. **Song Title** - Artist\n"
-                "   [▶️ Listen on YouTube](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
-                "   *One short sentence description.*\n"
-            )
+    # 2. VibeChecker Thinks...
+    with st.chat_message("assistant"):
+        with st.spinner("VibeChecker is curating... 🎧"):
+            response_text = get_vibechecker_response(prompt)
             
-            # Call the AI
-            result = get_gemini_response(dj_prompt)
-            
-            # Check for our secret error code
-            if "ERROR_INVALID" in result:
-                st.error("🚫 That doesn't look like an emotion! Please try again.")
+            # Check for the Gibberish Error
+            if "ERROR_INVALID" in response_text:
+                error_msg = "🚫 I can only read human emotions. Please tell me how you feel!"
+                st.markdown(error_msg)
+                st.session_state.messages.append({"role": "assistant", "content": error_msg})
             else:
-                st.markdown(result)
+                st.markdown(response_text)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
