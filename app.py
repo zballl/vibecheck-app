@@ -59,7 +59,7 @@ st.markdown("""
     .stButton button {
         width: 100%;
         border-radius: 15px;
-        height: 70px; /* Taller buttons */
+        height: 70px;
         font-size: 18px;
         font-weight: 600;
         border: 1px solid #333;
@@ -72,7 +72,7 @@ st.markdown("""
     .stButton button:hover {
         border-color: #00d2ff;
         color: #00d2ff;
-        transform: translateY(-3px); /* Pop up effect */
+        transform: translateY(-3px);
         background-color: rgba(0, 0, 0, 0.8);
     }
     </style>
@@ -169,4 +169,15 @@ for msg in st.session_state.messages:
 
 # INPUT
 if prompt := st.chat_input("Type your mood or answer here..."):
-    st.session_state.messages.append({"role": "user", "content
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.rerun()
+
+# LOGIC
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    with st.chat_message("assistant", avatar="🎧"):
+        with st.spinner("Thinking..."):
+            response = get_vibe_check()
+            if "ERROR_INVALID" in response:
+                response = "🚫 I didn't catch that. Tell me a real emotion!"
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
