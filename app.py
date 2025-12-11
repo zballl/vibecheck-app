@@ -1,38 +1,40 @@
 import streamlit as st
-import google.generativeai as genai
-import os
+import requests
+import json
 
-# --- 1. SETUP API KEY ---
-# We get the key securely from Streamlit Secrets
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
-except Exception as e:
-    st.error("⚠️ API Key missing! Please go to 'Settings > Secrets' and set GOOGLE_API_KEY.")
-
-# --- 2. DJ INSTRUCTIONS ---
-dj_instructions = (
-    "You are DJ VibeCheck. Recommend 5 songs based on the mood. "
-    "For EACH song, provide a clickable YouTube Search link in this format:\n"
-    "1. **Song Title** - Artist [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
-    "   *Reason for choosing this song.*"
-)
-
-# --- 3. MODEL SETUP (Using 'gemini-pro') ---
-# We use 'gemini-pro' because it is 100% compatible with Streamlit Cloud
-try:
-    model = genai.GenerativeModel('gemini-pro')
-    chat = model.start_chat(history=[])
-    # Send instructions immediately since Pro doesn't support 'system_instructions' nicely in old versions
-    chat.send_message(dj_instructions) 
-except Exception as e:
-    st.error(f"Model Error: {e}")
-
-# --- 4. THE APP INTERFACE ---
+# --- 1. SETUP ---
 st.set_page_config(page_title="VibeCheck", page_icon="🎵")
 st.title("🎵 VibeCheck")
 st.write("Tell me how you feel, and I'll generate a playlist.")
 
+# Get API Key
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+else:
+    st.error("⚠️ API Key missing! Set GOOGLE_API_KEY in Secrets.")
+    st.stop()
+
+# --- 2. THE DIRECT API FUNCTION ---
+# This bypasses the library error by calling Google manually
+def get_gemini_response(prompt):
+    # We try Gemini 1.5 Flash first
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {'Content-Type': 'application/json'}
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    
+    response = requests.post(url, headers=headers, json=data)
+    
+    # If 1.5 Flash fails (404), fallback to Gemini Pro
+    if response.status_code != 200:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+        response = requests.post(url, headers=headers, json=data)
+
+    if response.status_code == 200:
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    else:
+        return f"Error: {response.text}"
+
+# --- 3. THE APP INTERFACE ---
 mood = st.text_input("How are you feeling?", placeholder="e.g. Happy, Anxious, Excited")
 
 if st.button("Generate Playlist"):
@@ -40,10 +42,17 @@ if st.button("Generate Playlist"):
         st.warning("Please tell me your mood first!")
     else:
         with st.spinner("Mixing tracks... 🎧"):
+            # DJ Instructions
+            dj_prompt = (
+                "You are DJ VibeCheck. Recommend 5 songs based on this mood: " + mood + "\n"
+                "For EACH song, provide a clickable YouTube Search link in this format:\n"
+                "1. **Song Title** - Artist [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
+                "   *Reason for choosing this song.*"
+            )
+            
+            # Call the manual function
             try:
-                # Add a prompt prefix to remind it to act like a DJ
-                prompt = f"{dj_instructions}\n\nUser Mood: {mood}"
-                response = chat.send_message(prompt)
-                st.markdown(response.text)
+                result = get_gemini_response(dj_prompt)
+                st.markdown(result)
             except Exception as e:
-                st.error(f"An error occurred: {e}")
+                st.error(f"Connection Error: {e}")
