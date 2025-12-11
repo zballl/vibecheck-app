@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
+import json
 import base64
 
 # --- 1. SETUP PAGE CONFIG ---
-st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="centered")
+st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
 
 # --- 2. IMAGE LOADER ---
 def get_base64_of_bin_file(bin_file):
@@ -11,13 +12,13 @@ def get_base64_of_bin_file(bin_file):
         data = f.read()
     return base64.b64encode(data).decode()
 
-# --- 3. CUSTOM CSS ---
+# --- 3. CUSTOM CSS (The Dashboard Look) ---
 try:
     img_base64 = get_base64_of_bin_file("background.jpeg")
     background_style = f"""
         <style>
         .stApp {{
-            background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url("data:image/jpeg;base64,{img_base64}");
+            background-image: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url("data:image/jpeg;base64,{img_base64}");
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -31,49 +32,73 @@ st.markdown(background_style, unsafe_allow_html=True)
 
 st.markdown("""
     <style>
-    /* Hiding Menu Elements but keeping Sidebar functional */
+    /* Clean up UI */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     
-    .title-text {
-        font-size: 80px;
-        font-weight: 900;
-        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
+    /* TITLE STYLE */
+    .main-title {
+        font-size: 60px;
+        font-weight: 800;
+        text-align: center;
+        background: -webkit-linear-gradient(45deg, #ffffff, #a0a0a0);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-align: center;
-        line-height: 1.1;
-        padding-bottom: 10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        margin-bottom: 5px;
     }
-    
-    .subtitle-text {
+    .subtitle {
         text-align: center;
-        font-size: 20px;
-        color: #ddd;
-        margin-bottom: 40px;
-        text-shadow: 1px 1px 2px black;
-    }
-    
-    /* Big Symmetric Buttons */
-    .stButton button {
-        width: 100%;
-        border-radius: 15px;
-        height: 70px;
+        color: #888;
         font-size: 18px;
-        font-weight: 600;
-        border: 1px solid #333;
-        background-color: rgba(0, 0, 0, 0.6); 
+        margin-bottom: 40px;
+    }
+
+    /* CARD STYLE (The White Boxes) */
+    .song-card {
+        background-color: white;
+        color: black;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 15px;
+        border-left: 10px solid #FF0080; /* Pink accent strip */
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .song-title { font-size: 20px; font-weight: bold; margin: 0; }
+    .song-artist { color: #555; font-size: 16px; margin-bottom: 10px; }
+    .song-desc { font-style: italic; color: #333; font-size: 14px; }
+    .listen-btn {
+        display: inline-block;
+        background-color: #00d2ff;
         color: white;
-        transition: all 0.3s;
-        backdrop-filter: blur(5px);
+        padding: 5px 15px;
+        border-radius: 20px;
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 12px;
+        margin-top: 5px;
     }
     
+    /* BUTTONS STYLE (Pill Shape) */
+    .stButton button {
+        border-radius: 25px;
+        height: 50px;
+        font-weight: 600;
+        border: none;
+        background-color: #1F2937;
+        color: white;
+        transition: 0.2s;
+    }
     .stButton button:hover {
-        border-color: #00d2ff;
-        color: #00d2ff;
-        transform: translateY(-3px);
-        background-color: rgba(0, 0, 0, 0.8);
+        background-color: #FF0080;
+        color: white;
+        transform: translateY(-2px);
+    }
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #111;
+        border-right: 1px solid #333;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -82,113 +107,132 @@ st.markdown("""
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("⚠️ API Key missing! Check your Secrets.")
+    st.error("⚠️ API Key missing!")
     st.stop()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- 5. SESSION STATE ---
+if "past_moods" not in st.session_state:
+    st.session_state.past_moods = []
+if "current_playlist" not in st.session_state:
+    st.session_state.current_playlist = None
+if "current_mood_text" not in st.session_state:
+    st.session_state.current_mood_text = ""
 
-# --- 5. THE BRAIN ---
-def get_vibe_check():
+# --- 6. THE BRAIN (Now outputs JSON for Cards) ---
+def get_music_data(mood):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    conversation_history = []
-    for msg in st.session_state.messages:
-        role = "user" if msg["role"] == "user" else "model"
-        conversation_history.append({"role": role, "parts": [{"text": msg["content"]}]})
-
-    system_prompt = (
-        "You are DJ VibeCheck. Goal: Recommend 5 songs based on the user's mood.\n"
-        "RULES:\n"
-        "1. IF the user says 'I'm not sure' or asks for help identifying mood: Ask exactly 3 short, simple questions to help identify their mood. Do not recommend songs yet.\n"
-        "2. IF the user answers your questions OR states a mood: \n"
-        "   - First, briefly state what mood you think they are feeling.\n"
-        "   - Then, provide the playlist.\n"
-        "3. IF the input is gibberish/random: Say 'ERROR_INVALID'.\n\n"
-        "PLAYLIST FORMAT (Strict):\n"
-        "1. **Song Title** - Artist\n"
-        "   [▶️ Listen](https://www.youtube.com/results?search_query=Song+Title+Artist)\n"
-        "   *One short sentence description.*"
+    # We ask for JSON format to build the cards
+    prompt = (
+        f"User Mood: '{mood}'\n"
+        "TASK: detailed analysis of mood. If valid, return a JSON list of 5 songs.\n"
+        "OUTPUT FORMAT: A raw JSON list only. No markdown. Example: \n"
+        '[{"title": "Song Name", "artist": "Artist", "desc": "Why it fits.", "link": "https://youtube.com..."}]'
     )
-
-    data = {
-        "contents": conversation_history,
-        "systemInstruction": {"parts": [{"text": system_prompt}]}
-    }
     
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         res = requests.post(url, headers=headers, json=data)
         if res.status_code == 200:
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-        return "⚠️ Connection Error."
+            text_response = res.json()['candidates'][0]['content']['parts'][0]['text']
+            # Clean up response to ensure valid JSON
+            clean_json = text_response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json) # Convert text to Python List
     except:
-        return "⚠️ Network Error."
+        return None
+    return None
 
-# --- 6. SIDEBAR (With Description) ---
+# --- 7. SIDEBAR ---
 with st.sidebar:
-    st.title("🎧 VibeChecker AI")
-    st.markdown("### What is VibeChecker?")
-    st.info(
-        "VibeChecker is an AI-powered music curator that listens to how you feel and builds the perfect playlist instantly.\n\n"
-        "Instead of searching for songs manually, just tell VibeChecker your mood (e.g., 'Sad', 'Hyped', 'Chill') and get a custom playlist with YouTube links."
-    )
+    st.markdown("## 🎧 VibeChecker")
+    st.markdown("*Your elegant AI music curator.*")
     st.write("---")
-    if st.button("🗑️ Clear Chat History"):
-        st.session_state.messages = []
-        st.rerun()
-
-# --- 7. MAIN INTERFACE ---
-st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
-
-# HERO SECTION (Symmetric Layout)
-if len(st.session_state.messages) == 0:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: #fff; text-shadow: 1px 1px 2px black;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
     
-    # We use a placeholder to capture clicks
-    clicked_mood = None
+    st.markdown("### How to Use")
+    st.markdown("1. Select a mood\n2. View recommendations\n3. Click to listen")
+    
+    st.write("---")
+    st.markdown("### Past Moods")
+    for m in st.session_state.past_moods[-5:]: # Show last 5
+        st.caption(f"• {m}")
+        
+    st.write("---")
+    if st.button("🎲 Surprise Me"):
+        st.session_state.current_mood_text = "Surprise me with something random but amazing"
+        # Trigger generation immediately
+        data = get_music_data("Surprise me with something random")
+        if data:
+            st.session_state.current_playlist = data
+            st.session_state.past_moods.append("Surprise Me")
+            st.rerun()
 
-    # ROW 1: 3 Buttons (Symmetric Top)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("⚡ Energetic"): clicked_mood = "I'm feeling super energetic!"
-    with col2:
-        if st.button("🧘‍♂️ Chill"): clicked_mood = "I want to relax and chill."
-    with col3:
-        if st.button("🌧️ Melancholy"): clicked_mood = "I'm feeling sad and melancholy."
+# --- 8. MAIN DASHBOARD ---
 
-    # ROW 2: 2 Buttons (Symmetric Bottom)
-    col4, col5 = st.columns(2)
-    with col4:
-        if st.button("💔 Heartbroken"): clicked_mood = "I'm heartbroken."
-    with col5:
-        # The AI Question feature
-        if st.button("🤔 Not sure?"): 
-            clicked_mood = "I'm not sure how I feel. Ask me 3 simple questions to figure it out."
+# Header
+st.markdown('<div class="main-title">VibeChecker</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Your Personal Mood-Based Music Curator</div>', unsafe_allow_html=True)
+st.write("")
 
-    if clicked_mood:
-        st.session_state.messages.append({"role": "user", "content": clicked_mood})
-        st.rerun()
+# Button Row
+col1, col2, col3, col4 = st.columns(4)
+selected_mood = None
 
-# CHAT HISTORY
-for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"] == "user" else "🎧"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
+with col1:
+    if st.button("⚡ Energetic"): selected_mood = "Energetic"
+with col2:
+    if st.button("☂️ Melancholy"): selected_mood = "Melancholy"
+with col3:
+    if st.button("🧘 Chill"): selected_mood = "Chill"
+with col4:
+    if st.button("💔 Heartbroken"): selected_mood = "Heartbroken"
 
-# INPUT
-if prompt := st.chat_input("Type your mood or answer here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.rerun()
+# Handle Button Clicks
+if selected_mood:
+    st.session_state.current_mood_text = selected_mood
+    with st.spinner(f"Curating {selected_mood} vibes..."):
+        data = get_music_data(selected_mood)
+        if data:
+            st.session_state.current_playlist = data
+            st.session_state.past_moods.append(selected_mood)
 
-# LOGIC
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    with st.chat_message("assistant", avatar="🎧"):
-        with st.spinner("Thinking..."):
-            response = get_vibe_check()
-            if "ERROR_INVALID" in response:
-                response = "🚫 I didn't catch that. Tell me a real emotion!"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+# Input Bar (Centered)
+user_input = st.text_input("", placeholder="Type your mood here...", value=st.session_state.current_mood_text)
+
+# Logic for typing in the box
+if user_input and user_input != st.session_state.current_mood_text:
+    st.session_state.current_mood_text = user_input
+    with st.spinner(f"Analyzing '{user_input}'..."):
+        data = get_music_data(user_input)
+        if data:
+            st.session_state.current_playlist = data
+            st.session_state.past_moods.append(user_input)
+            st.rerun()
+
+# --- 9. RESULTS SECTION (THE CARDS) ---
+st.write("")
+if st.session_state.current_playlist:
+    st.markdown(f"### Recommended for {st.session_state.current_mood_text}")
+    
+    # Loop through the data and create White Cards
+    for song in st.session_state.current_playlist:
+        # We use HTML to style the card exactly like the image
+        st.markdown(f"""
+        <div class="song-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <p class="song-title">{song['title']}</p>
+                    <p class="song-artist">{song['artist']}</p>
+                    <p class="song-desc">"{song['desc']}"</p>
+                </div>
+                <div>
+                    <a href="{song.get('link', '#')}" target="_blank" class="listen-btn">▶ Listen</a>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# Question Feature (Kept as requested)
+st.write("---")
+if st.button("🤔 Not sure how I feel? Help me."):
+    st.info("Ask yourself: Do you want high energy or low energy? Do you want lyrics or instrumental?")
