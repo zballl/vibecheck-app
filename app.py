@@ -16,8 +16,9 @@ except:
 
 # --- 3. DIRECT CONNECTION FUNCTION ---
 def get_gemini_response(prompt):
-    # UPDATED: Using 'gemini-2.0-flash' because your key supports it!
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    # UPDATED: Using 'gemini-flash-latest'.
+    # This automatically finds the working version for your account.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     
     headers = {'Content-Type': 'application/json'}
     data = {
@@ -36,6 +37,9 @@ def get_gemini_response(prompt):
         except:
             return "Error parsing response. Try again."
     else:
+        # Fallback: If Flash limit is 0, try Pro
+        if response.status_code == 429:
+             return "⚠️ Quota Limit. Please wait 1 minute and try again, or create a new Key."
         return f"Google Error {response.status_code}: {response.text}"
 
 # --- 4. THE APP UI ---
@@ -45,7 +49,7 @@ if st.button("Generate Playlist"):
     if not mood:
         st.warning("Please tell me your mood first!")
     else:
-        with st.spinner("Mixing tracks with Gemini 2.0... 🎧"):
+        with st.spinner("Mixing tracks... 🎧"):
             # DJ Instructions
             dj_prompt = (
                 f"You are DJ VibeCheck. Recommend 5 songs for this mood: '{mood}'.\n"
