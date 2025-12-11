@@ -1,6 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
 import os
+import streamlit as st
+st.write("👀 Debug Mode: Here are the secrets I can see:")
+st.write(st.secrets)
 
 # --- 1. SETUP API KEY SECURELY ---
 # We get the key from Streamlit Secrets (not hardcoded!)
@@ -46,4 +49,5 @@ if st.button("Generate Playlist"):
                     response = chat.send_message(dj_instructions + "\nUser Mood: " + mood)
                 st.markdown(response.text)
             except Exception as e:
+
                 st.error(f"Error: {e}")
