@@ -9,17 +9,13 @@ st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
 
 # --- 2. IMAGE LOADER ---
 def get_base64_of_bin_file(bin_file):
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except:
-        return ""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
 # --- 3. CUSTOM CSS ---
-img_base64 = get_base64_of_bin_file("background.jpeg")
-
-if img_base64:
+try:
+    img_base64 = get_base64_of_bin_file("background.jpeg")
     background_style = f"""
         <style>
         .stApp {{
@@ -30,7 +26,7 @@ if img_base64:
         }}
         </style>
     """
-else:
+except:
     background_style = "<style>.stApp { background-color: #0E1117; }</style>"
 
 st.markdown(background_style, unsafe_allow_html=True)
@@ -79,10 +75,31 @@ st.markdown("""
     }
     
     /* TEXT INFO */
-    .song-info { flex-grow: 1; color: #333; margin-right: 15px; }
-    .song-title { font-size: 20px; font-weight: 800; margin: 0; color: #000; line-height: 1.2; }
-    .song-artist { font-size: 16px; font-weight: 600; color: #555; margin: 2px 0 5px 0; }
-    .song-desc { font-size: 14px; color: #666; font-style: italic; margin: 0; line-height: 1.4; }
+    .song-info { 
+        flex-grow: 1; 
+        color: #333; 
+        margin-right: 15px;
+    }
+    .song-title { 
+        font-size: 20px; 
+        font-weight: 800; 
+        margin: 0; 
+        color: #000; 
+        line-height: 1.2;
+    }
+    .song-artist { 
+        font-size: 16px; 
+        font-weight: 600;
+        color: #555; 
+        margin: 2px 0 5px 0; 
+    }
+    .song-desc {
+        font-size: 14px;
+        color: #666;
+        font-style: italic;
+        margin: 0;
+        line-height: 1.4;
+    }
     
     /* LISTEN BUTTON */
     .listen-btn {
@@ -101,9 +118,12 @@ st.markdown("""
         display: flex;
         align-items: center;
     }
-    .listen-btn:hover { background-color: #00d2ff; color: white; }
+    .listen-btn:hover {
+        background-color: #00d2ff;
+        color: white;
+    }
     
-    /* BUTTON STYLING */
+    /* BUTTONS */
     .stButton button {
         width: 100%;
         height: 50px;
@@ -113,7 +133,10 @@ st.markdown("""
         background-color: rgba(20,20,20,0.8);
         color: white;
     }
-    .stButton button:hover { border-color: #00d2ff; color: #00d2ff; }
+    .stButton button:hover {
+        border-color: #00d2ff;
+        color: #00d2ff;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -121,98 +144,61 @@ st.markdown("""
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("⚠️ API Key missing! Check your Secrets.")
+    st.error("⚠️ API Key missing!")
     st.stop()
 
-# --- 5. STATE MANAGEMENT ---
 if "playlist" not in st.session_state:
     st.session_state.playlist = None
 if "current_mood" not in st.session_state:
     st.session_state.current_mood = ""
-if "questions_mode" not in st.session_state:
-    st.session_state.questions_mode = False
-if "ai_questions" not in st.session_state:
-    st.session_state.ai_questions = ""
 if "error_msg" not in st.session_state:
     st.session_state.error_msg = None
 
-# --- 6. AI FUNCTIONS ---
-
-# Function A: Generate Playlist (JSON)
-def get_vibe_playlist(prompt_input):
+# --- 5. THE BRAIN (Stricter Logic) ---
+def get_vibe_check(mood):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    final_prompt = (
-        f"Input: '{prompt_input}'\n"
-        "TASK: Recommend 5 songs.\n"
+    # Very Strict Prompt
+    prompt = (
+        f"User Input: '{mood}'\n"
+        "TASK: Analyze if this input represents a valid human emotion, mood, or vibe.\n"
         "RULES:\n"
-        "1. STRICT: If input is gibberish/nonsense -> RETURN JSON: [{'error': 'invalid'}]\n"
-        "2. Include 'desc' (short reason) and 'link' (YouTube Search).\n"
+        "1. STRICT: If the input is nonsense (e.g., 'asdf', 'fshjaf'), random letters, numbers only, or clearly not an emotion -> RETURN JSON: [{'error': 'invalid'}]\n"
+        "2. If valid: Return a JSON list of 5 songs.\n"
+        "3. Include a 'desc' (short reason) and 'link' (YouTube Search).\n\n"
         "OUTPUT FORMAT (Raw JSON only):\n"
         "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason.\", \"link\": \"https://youtube...\"}]"
     )
     
-    data = {"contents": [{"parts": [{"text": final_prompt}]}]}
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    
     try:
         res = requests.post(url, headers=headers, json=data)
         if res.status_code == 200:
             text = res.json()['candidates'][0]['content']['parts'][0]['text']
-            clean = text.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean)
+            clean_json = text.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
     except:
         return None
     return None
 
-# Function B: Generate Questions (Text)
-def get_therapy_questions():
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    
-    prompt = "Ask 3 short, creative questions to help a user figure out their mood. Return ONLY the questions as a numbered list."
-    
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
-    try:
-        res = requests.post(url, headers=headers, json=data)
-        if res.status_code == 200:
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return "1. High energy or low energy?\n2. Lyrics or instrumental?\n3. Happy or Sad?"
-    return "Error generating questions."
-
-# --- 7. SIDEBAR (With Surprise Me) ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
     st.title("🎧 Control Panel")
     st.markdown("### ℹ️ About VibeChecker")
-    st.info("Your personal AI Music Curator.")
-    
+    st.info("VibeChecker uses AI to curate the perfect playlist for your current mood.")
     st.write("---")
-    
-    # NEW SURPRISE BUTTON
-    if st.button("🎲 Surprise Me"):
-        random_vibe = random.choice(["Energetic", "Melancholy", "Chill", "Heartbroken", "Confident", "Dreamy"])
-        st.session_state.current_mood = random_vibe
-        st.session_state.questions_mode = False 
-        
-        with st.spinner(f"Surprise! Curating {random_vibe} tracks..."):
-            data = get_vibe_playlist(random_vibe)
-            st.session_state.playlist = data
-            st.session_state.error_msg = None
-        st.rerun()
-
-    st.write("")
     if st.button("🔄 Reset App"):
         st.session_state.playlist = None
         st.session_state.current_mood = ""
-        st.session_state.questions_mode = False
-        st.session_state.ai_questions = ""
         st.session_state.error_msg = None
         st.rerun()
 
-# --- 8. MAIN UI ---
+# --- 7. MAIN UI ---
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 
-# Mood Buttons
+# Buttons
 c1, c2, c3, c4 = st.columns(4)
 b1 = c1.button("⚡ Energetic")
 b2 = c2.button("☂️ Melancholy")
@@ -225,51 +211,25 @@ if b2: clicked_mood = "Melancholy"
 if b3: clicked_mood = "Chill"
 if b4: clicked_mood = "Heartbroken"
 
-# "Not Sure" Button Logic
 st.write("")
 if st.button("🤔 Not sure how I feel?"):
-    with st.spinner("Consulting AI Therapist..."):
-        questions = get_therapy_questions()
-        st.session_state.ai_questions = questions
-        st.session_state.questions_mode = True
-        st.session_state.playlist = None 
-        st.session_state.error_msg = None
-    st.rerun()
+    clicked_mood = "Surprise me with a random mix"
 
-# --- 9. INPUT SECTION ---
+# Input
+user_input = st.text_input("", placeholder="Or type your exact mood here...", value=st.session_state.current_mood)
 
-# If in Question Mode, show the questions
-if st.session_state.questions_mode:
-    st.info("Answer these 3 questions in the box below:")
-    st.markdown(f"**{st.session_state.ai_questions}**")
-    placeholder_text = "Type your answers here..."
-else:
-    placeholder_text = "Or type your exact mood here..."
+# Logic Calculation
+final_mood = clicked_mood if clicked_mood else (user_input if user_input != st.session_state.current_mood else None)
 
-# Input Bar
-user_input = st.text_input("", placeholder=placeholder_text)
-
-# --- 10. LOGIC CORE ---
-
-# Handle Text Input (Enter Key)
-if user_input:
-    # Determine what to ask the AI
-    if st.session_state.questions_mode:
-        final_prompt = f"User answered these questions: {user_input}. Determine mood and recommend songs."
-        display_mood = "your custom vibe"
-        # We turn off question mode so the playlist shows up
-        st.session_state.questions_mode = False 
-    else:
-        final_prompt = user_input
-        display_mood = user_input
-
-    st.session_state.current_mood = display_mood
+if final_mood:
+    # Reset error state before processing
     st.session_state.error_msg = None
+    st.session_state.current_mood = final_mood
     
-    with st.spinner("Curating tracks..."):
-        data = get_vibe_playlist(final_prompt)
+    with st.spinner(f"Curating tracks for {final_mood}..."):
+        data = get_vibe_check(final_mood)
         
-        # Error Logic
+        # ERROR CHECKING
         if not data:
              st.session_state.error_msg = "⚠️ Connection Error. Try again."
              st.session_state.playlist = None
@@ -278,26 +238,17 @@ if user_input:
              st.session_state.playlist = None
         else:
              st.session_state.playlist = data
-    st.rerun()
 
-# Handle Button Click
-if clicked_mood:
-    st.session_state.current_mood = clicked_mood
-    st.session_state.questions_mode = False
-    st.session_state.error_msg = None
-    
-    with st.spinner(f"Curating tracks for {clicked_mood}..."):
-        data = get_vibe_playlist(clicked_mood)
-        st.session_state.playlist = data
-    st.rerun()
+    # IMPORTANT: We do NOT use st.rerun() here anymore. 
+    # This ensures the error message below stays visible.
 
-# --- 11. RENDER OUTPUT ---
+# --- 8. DISPLAY ERROR OR PLAYLIST ---
 
-# Show Error if exists
+# Display Error if it exists
 if st.session_state.error_msg:
     st.error(st.session_state.error_msg)
 
-# Show Playlist if exists
+# Display Playlist if it exists
 if st.session_state.playlist:
     st.write("---")
     st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
