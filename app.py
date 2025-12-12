@@ -47,14 +47,14 @@ st.markdown("""
         padding-bottom: 20px;
     }
     
-    /* SONG CARD */
+    /* SONG CARD CONTAINER */
     .song-card {
         background-color: white;
         border-radius: 12px;
         padding: 15px;
         margin-bottom: 20px;
         display: flex;
-        align-items: center;
+        align-items: center; /* Vertically center content */
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         transition: transform 0.2s;
     }
@@ -71,13 +71,35 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 40px; /* Big Emoji */
+        font-size: 40px; 
     }
     
-    /* TEXT INFO */
-    .song-info { flex-grow: 1; color: #333; }
-    .song-title { font-size: 20px; font-weight: 800; margin: 0; color: #000; }
-    .song-artist { font-size: 16px; color: #666; margin: 5px 0 0 0; }
+    /* TEXT INFO SECTION */
+    .song-info { 
+        flex-grow: 1; 
+        color: #333; 
+        margin-right: 15px;
+    }
+    .song-title { 
+        font-size: 20px; 
+        font-weight: 800; 
+        margin: 0; 
+        color: #000; 
+        line-height: 1.2;
+    }
+    .song-artist { 
+        font-size: 16px; 
+        font-weight: 600;
+        color: #555; 
+        margin: 2px 0 5px 0; 
+    }
+    .song-desc {
+        font-size: 14px;
+        color: #666;
+        font-style: italic;
+        margin: 0;
+        line-height: 1.4;
+    }
     
     /* LISTEN BUTTON */
     .listen-btn {
@@ -91,6 +113,10 @@ st.markdown("""
         font-size: 14px;
         white-space: nowrap;
         transition: all 0.2s;
+        height: 40px;
+        line-height: 20px;
+        display: flex;
+        align-items: center;
     }
     .listen-btn:hover {
         background-color: #00d2ff;
@@ -126,20 +152,22 @@ if "playlist" not in st.session_state:
 if "current_mood" not in st.session_state:
     st.session_state.current_mood = ""
 
-# --- 5. THE BRAIN (With Error Checking & Search Links) ---
+# --- 5. THE BRAIN (Stricter Gibberish Check) ---
 def get_vibe_check(mood):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # Updated Prompt: Checks for gibberish & requests Search Links
+    # Updated Prompt: STRICTER on gibberish, asks for Description
     prompt = (
-        f"Analyze user input: '{mood}'.\n"
-        "RULES:\n"
-        "1. IF input is gibberish/nonsense (e.g. 'asdf', 'fshjaf'), return JSON: [{'error': 'invalid'}]\n"
-        "2. IF valid mood, return JSON list of 5 songs.\n"
-        "3. FOR EACH SONG, generate a YouTube Search URL: https://www.youtube.com/results?search_query=Song+Title+Artist\n\n"
+        f"User Input: '{mood}'\n"
+        "TASK: Analyze if this is a valid human emotion or music vibe.\n"
+        "CRITICAL RULES:\n"
+        "1. IF input is random letters (e.g. 'fshjaf', 'asdf'), nonsense, or not a feeling: RETURN JSON: [{'error': 'invalid'}]\n"
+        "2. IF valid mood: Return JSON list of 5 songs.\n"
+        "3. INCLUDE a 'desc' field: A short, 1-sentence explanation of why the song fits.\n"
+        "4. INCLUDE a 'link': https://www.youtube.com/results?search_query=Song+Title+Artist\n\n"
         "OUTPUT FORMAT (Raw JSON only):\n"
-        "[{\"title\": \"Song Name\", \"artist\": \"Artist\", \"link\": \"https://www.youtube.com/results?search_query=Song+Artist\"}]"
+        "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason it fits.\", \"link\": \"https://youtube...\"}]"
     )
     
     data = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -196,10 +224,11 @@ if final_mood:
     with st.spinner(f"Curating tracks for {final_mood}..."):
         data = get_vibe_check(final_mood)
         
-        # ERROR CHECK: If API failed or returned Error JSON
+        # ERROR CHECK LOGIC
         if not data:
              st.error("⚠️ Connection Error. Try again.")
              st.session_state.playlist = None
+        # Check if the AI returned the "invalid" error object
         elif isinstance(data, list) and len(data) > 0 and "error" in data[0]:
              st.error("🚫 That doesn't look like a real emotion! Please try again.")
              st.session_state.playlist = None
@@ -207,7 +236,7 @@ if final_mood:
              st.session_state.playlist = data
     st.rerun()
 
-# --- 8. DISPLAY CARDS (Fixed Links & Emojis) ---
+# --- 8. DISPLAY CARDS (With Descriptions) ---
 music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
 
 if st.session_state.playlist:
@@ -215,15 +244,16 @@ if st.session_state.playlist:
     st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
     
     for song in st.session_state.playlist:
-        # Pick a random emoji for the art
         random_emoji = random.choice(music_emojis)
         
+        # Updated Card HTML with Description
         st.markdown(f"""
         <div class="song-card">
             <div class="album-art">{random_emoji}</div>
             <div class="song-info">
                 <div class="song-title">{song.get('title', 'Unknown')}</div>
                 <div class="song-artist">{song.get('artist', 'Unknown')}</div>
+                <p class="song-desc">"{song.get('desc', 'A great track for this vibe.')}"</p>
             </div>
             <a href="{song.get('link', 'https://www.youtube.com')}" target="_blank" class="listen-btn">▶ Listen</a>
         </div>
