@@ -54,7 +54,7 @@ st.markdown("""
         padding: 15px;
         margin-bottom: 20px;
         display: flex;
-        align-items: center; /* Vertically center content */
+        align-items: center;
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         transition: transform 0.2s;
     }
@@ -74,7 +74,7 @@ st.markdown("""
         font-size: 40px; 
     }
     
-    /* TEXT INFO SECTION */
+    /* TEXT INFO */
     .song-info { 
         flex-grow: 1; 
         color: #333; 
@@ -123,7 +123,7 @@ st.markdown("""
         color: white;
     }
     
-    /* BUTTON STYLING */
+    /* BUTTONS */
     .stButton button {
         width: 100%;
         height: 50px;
@@ -151,23 +151,24 @@ if "playlist" not in st.session_state:
     st.session_state.playlist = None
 if "current_mood" not in st.session_state:
     st.session_state.current_mood = ""
+if "error_msg" not in st.session_state:
+    st.session_state.error_msg = None
 
-# --- 5. THE BRAIN (Stricter Gibberish Check) ---
+# --- 5. THE BRAIN (Stricter Logic) ---
 def get_vibe_check(mood):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # Updated Prompt: STRICTER on gibberish, asks for Description
+    # Very Strict Prompt
     prompt = (
         f"User Input: '{mood}'\n"
-        "TASK: Analyze if this is a valid human emotion or music vibe.\n"
-        "CRITICAL RULES:\n"
-        "1. IF input is random letters (e.g. 'fshjaf', 'asdf'), nonsense, or not a feeling: RETURN JSON: [{'error': 'invalid'}]\n"
-        "2. IF valid mood: Return JSON list of 5 songs.\n"
-        "3. INCLUDE a 'desc' field: A short, 1-sentence explanation of why the song fits.\n"
-        "4. INCLUDE a 'link': https://www.youtube.com/results?search_query=Song+Title+Artist\n\n"
+        "TASK: Analyze if this input represents a valid human emotion, mood, or vibe.\n"
+        "RULES:\n"
+        "1. STRICT: If the input is nonsense (e.g., 'asdf', 'fshjaf'), random letters, numbers only, or clearly not an emotion -> RETURN JSON: [{'error': 'invalid'}]\n"
+        "2. If valid: Return a JSON list of 5 songs.\n"
+        "3. Include a 'desc' (short reason) and 'link' (YouTube Search).\n\n"
         "OUTPUT FORMAT (Raw JSON only):\n"
-        "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason it fits.\", \"link\": \"https://youtube...\"}]"
+        "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason.\", \"link\": \"https://youtube...\"}]"
     )
     
     data = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -191,6 +192,7 @@ with st.sidebar:
     if st.button("🔄 Reset App"):
         st.session_state.playlist = None
         st.session_state.current_mood = ""
+        st.session_state.error_msg = None
         st.rerun()
 
 # --- 7. MAIN UI ---
@@ -216,37 +218,46 @@ if st.button("🤔 Not sure how I feel?"):
 # Input
 user_input = st.text_input("", placeholder="Or type your exact mood here...", value=st.session_state.current_mood)
 
-# Logic
+# Logic Calculation
 final_mood = clicked_mood if clicked_mood else (user_input if user_input != st.session_state.current_mood else None)
 
 if final_mood:
+    # Reset error state before processing
+    st.session_state.error_msg = None
     st.session_state.current_mood = final_mood
+    
     with st.spinner(f"Curating tracks for {final_mood}..."):
         data = get_vibe_check(final_mood)
         
-        # ERROR CHECK LOGIC
+        # ERROR CHECKING
         if not data:
-             st.error("⚠️ Connection Error. Try again.")
+             st.session_state.error_msg = "⚠️ Connection Error. Try again."
              st.session_state.playlist = None
-        # Check if the AI returned the "invalid" error object
         elif isinstance(data, list) and len(data) > 0 and "error" in data[0]:
-             st.error("🚫 That doesn't look like a real emotion! Please try again.")
+             st.session_state.error_msg = "🚫 That doesn't look like a real emotion! Please try again."
              st.session_state.playlist = None
         else:
              st.session_state.playlist = data
-    st.rerun()
 
-# --- 8. DISPLAY CARDS (With Descriptions) ---
-music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
+    # IMPORTANT: We do NOT use st.rerun() here anymore. 
+    # This ensures the error message below stays visible.
 
+# --- 8. DISPLAY ERROR OR PLAYLIST ---
+
+# Display Error if it exists
+if st.session_state.error_msg:
+    st.error(st.session_state.error_msg)
+
+# Display Playlist if it exists
 if st.session_state.playlist:
     st.write("---")
     st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
     
+    music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
+    
     for song in st.session_state.playlist:
         random_emoji = random.choice(music_emojis)
         
-        # Updated Card HTML with Description
         st.markdown(f"""
         <div class="song-card">
             <div class="album-art">{random_emoji}</div>
