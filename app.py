@@ -9,13 +9,17 @@ st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
 
 # --- 2. IMAGE LOADER ---
 def get_base64_of_bin_file(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except:
+        return ""
 
 # --- 3. CUSTOM CSS ---
-try:
-    img_base64 = get_base64_of_bin_file("background.jpeg")
+img_base64 = get_base64_of_bin_file("background.jpeg")
+
+if img_base64:
     background_style = f"""
         <style>
         .stApp {{
@@ -26,7 +30,7 @@ try:
         }}
         </style>
     """
-except:
+else:
     background_style = "<style>.stApp { background-color: #0E1117; }</style>"
 
 st.markdown(background_style, unsafe_allow_html=True)
@@ -117,20 +121,20 @@ st.markdown("""
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("⚠️ API Key missing!")
+    st.error("⚠️ API Key missing! Check your Secrets.")
     st.stop()
 
-# --- 5. SESSION STATE ---
+# --- 5. STATE MANAGEMENT ---
 if "playlist" not in st.session_state:
     st.session_state.playlist = None
 if "current_mood" not in st.session_state:
     st.session_state.current_mood = ""
-if "error_msg" not in st.session_state:
-    st.session_state.error_msg = None
 if "questions_mode" not in st.session_state:
     st.session_state.questions_mode = False
-if "questions_text" not in st.session_state:
-    st.session_state.questions_text = ""
+if "ai_questions" not in st.session_state:
+    st.session_state.ai_questions = ""
+if "error_msg" not in st.session_state:
+    st.session_state.error_msg = None
 
 # --- 6. AI FUNCTIONS ---
 
@@ -165,7 +169,7 @@ def get_therapy_questions():
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    prompt = "Ask 3 short, creative questions to help a user figure out their mood. Format as a numbered list."
+    prompt = "Ask 3 short, creative questions to help a user figure out their mood. Return ONLY the questions as a numbered list."
     
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -173,7 +177,7 @@ def get_therapy_questions():
         if res.status_code == 200:
             return res.json()['candidates'][0]['content']['parts'][0]['text']
     except:
-        return "1. Do you have energy? 2. Do you want to be alone? 3. Happy or Sad?"
+        return "1. High energy or low energy?\n2. Lyrics or instrumental?\n3. Happy or Sad?"
     return "Error generating questions."
 
 # --- 7. SIDEBAR (With Surprise Me) ---
@@ -184,11 +188,11 @@ with st.sidebar:
     
     st.write("---")
     
-    # 1. NEW SURPRISE BUTTON
+    # NEW SURPRISE BUTTON
     if st.button("🎲 Surprise Me"):
-        random_vibe = random.choice(["Energetic", "Melancholy", "Chill", "Heartbroken"])
+        random_vibe = random.choice(["Energetic", "Melancholy", "Chill", "Heartbroken", "Confident", "Dreamy"])
         st.session_state.current_mood = random_vibe
-        st.session_state.questions_mode = False # Turn off questions if active
+        st.session_state.questions_mode = False 
         
         with st.spinner(f"Surprise! Curating {random_vibe} tracks..."):
             data = get_vibe_playlist(random_vibe)
@@ -196,11 +200,12 @@ with st.sidebar:
             st.session_state.error_msg = None
         st.rerun()
 
+    st.write("")
     if st.button("🔄 Reset App"):
         st.session_state.playlist = None
         st.session_state.current_mood = ""
         st.session_state.questions_mode = False
-        st.session_state.questions_text = ""
+        st.session_state.ai_questions = ""
         st.session_state.error_msg = None
         st.rerun()
 
@@ -214,57 +219,57 @@ b2 = c2.button("☂️ Melancholy")
 b3 = c3.button("🧘 Chill")
 b4 = c4.button("💔 Heartbroken")
 
-# Button Logic
 clicked_mood = None
 if b1: clicked_mood = "Energetic"
 if b2: clicked_mood = "Melancholy"
 if b3: clicked_mood = "Chill"
 if b4: clicked_mood = "Heartbroken"
 
-# "Not Sure" Button -> Triggers Question Mode
+# "Not Sure" Button Logic
 st.write("")
 if st.button("🤔 Not sure how I feel?"):
     with st.spinner("Consulting AI Therapist..."):
         questions = get_therapy_questions()
-        st.session_state.questions_text = questions
+        st.session_state.ai_questions = questions
         st.session_state.questions_mode = True
-        st.session_state.playlist = None # Hide old playlist
+        st.session_state.playlist = None 
         st.session_state.error_msg = None
     st.rerun()
 
-# --- 9. DISPLAY SECTION ---
+# --- 9. INPUT SECTION ---
 
-# A. Show Questions (If Mode Active)
+# If in Question Mode, show the questions
 if st.session_state.questions_mode:
     st.info("Answer these 3 questions in the box below:")
-    st.markdown(f"**{st.session_state.questions_text}**")
+    st.markdown(f"**{st.session_state.ai_questions}**")
     placeholder_text = "Type your answers here..."
 else:
     placeholder_text = "Or type your exact mood here..."
 
-# B. Input Bar
+# Input Bar
 user_input = st.text_input("", placeholder=placeholder_text)
 
-# Logic to Handle Input (Enter Key)
+# --- 10. LOGIC CORE ---
+
+# Handle Text Input (Enter Key)
 if user_input:
-    # If we were in Question Mode, we use the input as the ANSWER
+    # Determine what to ask the AI
     if st.session_state.questions_mode:
         final_prompt = f"User answered these questions: {user_input}. Determine mood and recommend songs."
         display_mood = "your custom vibe"
-        st.session_state.questions_mode = False # Turn off questions now
+        # We turn off question mode so the playlist shows up
+        st.session_state.questions_mode = False 
     else:
-        # Normal Mode
         final_prompt = user_input
         display_mood = user_input
 
-    # Generate
     st.session_state.current_mood = display_mood
     st.session_state.error_msg = None
     
     with st.spinner("Curating tracks..."):
         data = get_vibe_playlist(final_prompt)
         
-        # Error Checking
+        # Error Logic
         if not data:
              st.session_state.error_msg = "⚠️ Connection Error. Try again."
              st.session_state.playlist = None
@@ -275,7 +280,7 @@ if user_input:
              st.session_state.playlist = data
     st.rerun()
 
-# Logic to Handle Button Clicks (Immediate)
+# Handle Button Click
 if clicked_mood:
     st.session_state.current_mood = clicked_mood
     st.session_state.questions_mode = False
@@ -286,13 +291,13 @@ if clicked_mood:
         st.session_state.playlist = data
     st.rerun()
 
-# --- 10. RENDER RESULTS ---
+# --- 11. RENDER OUTPUT ---
 
-# Show Error
+# Show Error if exists
 if st.session_state.error_msg:
     st.error(st.session_state.error_msg)
 
-# Show Playlist
+# Show Playlist if exists
 if st.session_state.playlist:
     st.write("---")
     st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
