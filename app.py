@@ -47,7 +47,7 @@ st.markdown("""
         padding-bottom: 20px;
     }
     
-    /* SONG CARD CONTAINER */
+    /* SONG CARD */
     .song-card {
         background-color: white;
         border-radius: 12px;
@@ -71,35 +71,13 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 40px; 
+        font-size: 40px; /* Big Emoji */
     }
     
     /* TEXT INFO */
-    .song-info { 
-        flex-grow: 1; 
-        color: #333; 
-        margin-right: 15px;
-    }
-    .song-title { 
-        font-size: 20px; 
-        font-weight: 800; 
-        margin: 0; 
-        color: #000; 
-        line-height: 1.2;
-    }
-    .song-artist { 
-        font-size: 16px; 
-        font-weight: 600;
-        color: #555; 
-        margin: 2px 0 5px 0; 
-    }
-    .song-desc {
-        font-size: 14px;
-        color: #666;
-        font-style: italic;
-        margin: 0;
-        line-height: 1.4;
-    }
+    .song-info { flex-grow: 1; color: #333; }
+    .song-title { font-size: 20px; font-weight: 800; margin: 0; color: #000; }
+    .song-artist { font-size: 16px; color: #666; margin: 5px 0 0 0; }
     
     /* LISTEN BUTTON */
     .listen-btn {
@@ -113,17 +91,13 @@ st.markdown("""
         font-size: 14px;
         white-space: nowrap;
         transition: all 0.2s;
-        height: 40px;
-        line-height: 20px;
-        display: flex;
-        align-items: center;
     }
     .listen-btn:hover {
         background-color: #00d2ff;
         color: white;
     }
     
-    /* BUTTONS */
+    /* BUTTON STYLING */
     .stButton button {
         width: 100%;
         height: 50px;
@@ -151,24 +125,21 @@ if "playlist" not in st.session_state:
     st.session_state.playlist = None
 if "current_mood" not in st.session_state:
     st.session_state.current_mood = ""
-if "error_msg" not in st.session_state:
-    st.session_state.error_msg = None
 
-# --- 5. THE BRAIN (Stricter Logic) ---
+# --- 5. THE BRAIN (With Error Checking & Search Links) ---
 def get_vibe_check(mood):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
-    # Very Strict Prompt
+    # Updated Prompt: Checks for gibberish & requests Search Links
     prompt = (
-        f"User Input: '{mood}'\n"
-        "TASK: Analyze if this input represents a valid human emotion, mood, or vibe.\n"
+        f"Analyze user input: '{mood}'.\n"
         "RULES:\n"
-        "1. STRICT: If the input is nonsense (e.g., 'asdf', 'fshjaf'), random letters, numbers only, or clearly not an emotion -> RETURN JSON: [{'error': 'invalid'}]\n"
-        "2. If valid: Return a JSON list of 5 songs.\n"
-        "3. Include a 'desc' (short reason) and 'link' (YouTube Search).\n\n"
+        "1. IF input is gibberish/nonsense (e.g. 'asdf', 'fshjaf'), return JSON: [{'error': 'invalid'}]\n"
+        "2. IF valid mood, return JSON list of 5 songs.\n"
+        "3. FOR EACH SONG, generate a YouTube Search URL: https://www.youtube.com/results?search_query=Song+Title+Artist\n\n"
         "OUTPUT FORMAT (Raw JSON only):\n"
-        "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason.\", \"link\": \"https://youtube...\"}]"
+        "[{\"title\": \"Song Name\", \"artist\": \"Artist\", \"link\": \"https://www.youtube.com/results?search_query=Song+Artist\"}]"
     )
     
     data = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -192,7 +163,6 @@ with st.sidebar:
     if st.button("🔄 Reset App"):
         st.session_state.playlist = None
         st.session_state.current_mood = ""
-        st.session_state.error_msg = None
         st.rerun()
 
 # --- 7. MAIN UI ---
@@ -218,44 +188,34 @@ if st.button("🤔 Not sure how I feel?"):
 # Input
 user_input = st.text_input("", placeholder="Or type your exact mood here...", value=st.session_state.current_mood)
 
-# Logic Calculation
+# Logic
 final_mood = clicked_mood if clicked_mood else (user_input if user_input != st.session_state.current_mood else None)
 
 if final_mood:
-    # Reset error state before processing
-    st.session_state.error_msg = None
     st.session_state.current_mood = final_mood
-    
     with st.spinner(f"Curating tracks for {final_mood}..."):
         data = get_vibe_check(final_mood)
         
-        # ERROR CHECKING
+        # ERROR CHECK: If API failed or returned Error JSON
         if not data:
-             st.session_state.error_msg = "⚠️ Connection Error. Try again."
+             st.error("⚠️ Connection Error. Try again.")
              st.session_state.playlist = None
         elif isinstance(data, list) and len(data) > 0 and "error" in data[0]:
-             st.session_state.error_msg = "🚫 That doesn't look like a real emotion! Please try again."
+             st.error("🚫 That doesn't look like a real emotion! Please try again.")
              st.session_state.playlist = None
         else:
              st.session_state.playlist = data
+    st.rerun()
 
-    # IMPORTANT: We do NOT use st.rerun() here anymore. 
-    # This ensures the error message below stays visible.
+# --- 8. DISPLAY CARDS (Fixed Links & Emojis) ---
+music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
 
-# --- 8. DISPLAY ERROR OR PLAYLIST ---
-
-# Display Error if it exists
-if st.session_state.error_msg:
-    st.error(st.session_state.error_msg)
-
-# Display Playlist if it exists
 if st.session_state.playlist:
     st.write("---")
     st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
     
-    music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
-    
     for song in st.session_state.playlist:
+        # Pick a random emoji for the art
         random_emoji = random.choice(music_emojis)
         
         st.markdown(f"""
@@ -264,7 +224,6 @@ if st.session_state.playlist:
             <div class="song-info">
                 <div class="song-title">{song.get('title', 'Unknown')}</div>
                 <div class="song-artist">{song.get('artist', 'Unknown')}</div>
-                <p class="song-desc">"{song.get('desc', 'A great track for this vibe.')}"</p>
             </div>
             <a href="{song.get('link', 'https://www.youtube.com')}" target="_blank" class="listen-btn">▶ Listen</a>
         </div>
