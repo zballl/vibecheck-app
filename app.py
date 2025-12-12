@@ -33,7 +33,7 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* We keep header visible so sidebar toggle works */
     
     .title-text {
         font-size: 80px;
@@ -87,7 +87,7 @@ except:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- 5. THE BRAIN (Now with Memory!) ---
+# --- 5. THE BRAIN ---
 def get_vibe_check():
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
@@ -105,7 +105,7 @@ def get_vibe_check():
         "RULES:\n"
         "1. IF the user says 'I'm not sure': Ask exactly 3 short, simple questions to help identify their mood. Do not recommend songs yet.\n"
         "2. IF the user answers your questions OR states a mood: \n"
-        "   - First, briefly state what mood you think they are feeling (e.g., 'It sounds like you're feeling reflective...').\n"
+        "   - First, briefly state what mood you think they are feeling.\n"
         "   - Then, provide the playlist.\n"
         "3. IF the input is gibberish/random: Say 'ERROR_INVALID'.\n\n"
         "PLAYLIST FORMAT (Strict):\n"
@@ -114,7 +114,6 @@ def get_vibe_check():
         "   *One short sentence description.*"
     )
 
-    # 3. SEND REQUEST
     data = {
         "contents": conversation_history,
         "systemInstruction": {"parts": [{"text": system_prompt}]}
@@ -128,18 +127,30 @@ def get_vibe_check():
     except:
         return "⚠️ Network Error."
 
-# --- 6. SIDEBAR ---
+# --- 6. IMPROVED SIDEBAR ---
 with st.sidebar:
     st.title("🎧 Control Panel")
+    
+    st.markdown("### ℹ️ About VibeChecker")
+    st.info(
+        "VibeChecker is your personal **AI Music Curator**.\n\n"
+        "It uses advanced AI to understand your exact emotional state—whether you type it directly or answer our therapy questions—and builds a custom YouTube playlist instantly."
+    )
+    
+    st.write("---")
+    
+    # Clean Button
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
+        
+    st.caption("Powered by Gemini 1.5 Flash")
 
 # --- 7. MAIN INTERFACE ---
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle-text">Your Personal AI Music Curator</p>', unsafe_allow_html=True)
 
-# HERO SECTION (Quick Buttons)
+# HERO SECTION
 if len(st.session_state.messages) == 0:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #fff; text-shadow: 1px 1px 2px black;'>How are you feeling right now?</h4>", unsafe_allow_html=True)
@@ -157,11 +168,10 @@ if len(st.session_state.messages) == 0:
     with col4:
         if st.button("💔 Heartbroken"): clicked_mood = "I'm heartbroken."
 
-    # ROW 2 - The New Feature
-    st.write("") # Spacer
-    c1, c2, c3 = st.columns([1, 2, 1]) # Centered column
+    # ROW 2
+    st.write("")
+    c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        # This triggers the Question Flow
         if st.button("🤔 Not sure how I feel?"): 
             clicked_mood = "I'm not sure how I feel. Ask me 3 simple questions to figure it out."
 
@@ -180,7 +190,6 @@ if prompt := st.chat_input("Type your mood or answer here..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
-# GENERATE RESPONSE
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant", avatar="🎧"):
         with st.spinner("Thinking..."):
