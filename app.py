@@ -72,7 +72,7 @@ st.markdown("""
     text-align: center;
     color: rgba(255, 255, 255, 0.85);
     font-size: 22px;
-    margin-bottom: 40px;
+    margin-bottom: 50px;
     font-weight: 300;
     letter-spacing: 1px;
 }
@@ -167,7 +167,6 @@ def get_valid_model(key):
         if response.status_code == 200:
             data = response.json()
             for model in data.get('models', []):
-                # Prefer 1.5 Flash if available
                 if 'generateContent' in model.get('supportedGenerationMethods', []) and 'gemini' in model.get('name'):
                     return model.get('name')
         return "models/gemini-pro"
@@ -194,14 +193,26 @@ def get_vibe_playlist(mood_text):
         response = requests.post(url, json=payload)
         if response.status_code == 200:
             text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            
+            # --- JSON REPAIR ENGINE ---
+            # 1. Remove markdown backticks
             clean_text = text.replace("```json", "").replace("```", "").strip()
+            
+            # 2. Extract only the list part [ ... ]
             match = re.search(r"\[.*\]", clean_text, re.DOTALL)
             if match:
-                data = json.loads(match.group(0))
+                clean_text = match.group(0)
+            
+            # 3. Parse JSON
+            try:
+                data = json.loads(clean_text)
                 for song in data:
                     q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
                     song['link'] = f"https://www.youtube.com/results?search_query={q}"
                 return data
+            except json.JSONDecodeError as e:
+                return f"AI Error: Invalid JSON Format ({str(e)})"
+                
         elif response.status_code == 429:
             return "Quota Limit Reached. Please try again later."
         else:
@@ -233,7 +244,7 @@ with st.sidebar:
     if st.button("🎲 Surprise Me"):
         vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy", "Hyped", "Focus"])
         st.session_state.current_mood = vibe
-        st.session_state.show_quiz = False # Hide quiz on surprise
+        st.session_state.show_quiz = False
         with st.spinner(f"Curating {vibe} vibes..."):
             res = get_vibe_playlist(vibe)
             if isinstance(res, list): st.session_state.playlist = res
@@ -279,7 +290,7 @@ if clicked_mood:
 # Logic: Quiz Toggle
 if st.button("🤔 Not sure? Help me decide"):
     st.session_state.show_quiz = not st.session_state.show_quiz
-    st.session_state.playlist = None # Clear old results
+    st.session_state.playlist = None 
 
 # ------------------------------------------------------
 # INPUT SECTION (Quiz vs Text)
@@ -298,11 +309,10 @@ if st.session_state.show_quiz:
     
     if submitted_quiz:
         final_mood_query = f"User has {q1}, feels {q2}, and is emotionally {q3}"
-        st.session_state.current_mood = f"{q3} & {q1}" # For display title
-        st.session_state.show_quiz = False # Hide quiz after answer
+        st.session_state.current_mood = f"{q3} & {q1}" 
+        st.session_state.show_quiz = False
 
 else:
-    # Standard Text Input
     with st.form("mood_form"):
         user_input = st.text_input("", placeholder="Or describe your exact vibe here...")
         submitted_text = st.form_submit_button("Analyze My Vibe ✨")
@@ -325,7 +335,7 @@ if final_mood_query:
     st.rerun()
 
 # ======================================================
-# 7. OUTPUT AREA (Glassmorphism)
+# 7. OUTPUT AREA
 # ======================================================
 if st.session_state.error:
     st.error(st.session_state.error)
