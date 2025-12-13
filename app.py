@@ -103,13 +103,13 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN (MULTI-MODEL FAILSAFE) ---
+# --- 6. THE BRAIN (TRYING GEMINI 2.0 & 1.5) ---
 def get_vibe_check(mood):
-    # LIST OF MODELS TO TRY (In order of preference)
+    # We try Gemini 2.0 Flash Exp first (Fresh Quota)
+    # Then fallback to Gemini 1.5 Flash (Standard)
     models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro"
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash"
     ]
     
     prompt = (
@@ -123,15 +123,13 @@ def get_vibe_check(mood):
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {'Content-Type': 'application/json'}
     
-    last_error = ""
+    error_log = []
 
-    # Try each model until one works
     for model_name in models_to_try:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             response = requests.post(url, headers=headers, json=data)
             
-            # If successful, process and break the loop
             if response.status_code == 200:
                 try:
                     text = response.json()['candidates'][0]['content']['parts'][0]['text']
@@ -140,17 +138,18 @@ def get_vibe_check(mood):
                         clean_json = match.group(0)
                         return json.loads(clean_json) # SUCCESS!
                 except:
-                    continue # Parse failed, try next model
-            
+                    error_log.append(f"{model_name}: Parse Error")
+                    continue
             else:
-                last_error = f"Model {model_name} failed ({response.status_code})."
-                continue # HTTP failed, try next model
+                error_log.append(f"{model_name}: {response.status_code} Error")
+                continue
 
-        except:
+        except Exception as e:
+            error_log.append(f"{model_name}: {str(e)}")
             continue
 
-    # If we get here, ALL models failed
-    return f"All AI models failed. Last error: {last_error}"
+    # If all failed, return ALL errors so we know why
+    return f"ALL Models Failed. Details: {', '.join(error_log)}"
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
@@ -205,7 +204,7 @@ if target_mood:
         else:
             st.session_state.error_debug = result
 
-# Questions Logic
+# Questions
 if not_sure_button and not st.session_state.questions_asked:
     st.session_state.questions_asked = True
 
