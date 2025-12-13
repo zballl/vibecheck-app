@@ -10,7 +10,7 @@ import urllib.parse
 # ======================================================
 # 1. PAGE CONFIG
 # ======================================================
-st.set_page_config(page_title="VibeChecker AI", page_icon="🎵", layout="wide")
+st.set_page_config(page_title="VibeChecker Unlimited", page_icon="🎵", layout="wide")
 
 # ======================================================
 # 2. BACKGROUND IMAGE
@@ -49,109 +49,89 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ======================================================
-# 4. AUTO-DISCOVERY ENGINE (The Fix)
-# ======================================================
-def find_working_model(api_key):
-    """Asks Google: 'What models can I use?' and picks the best one."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            # Filter for models that generate text
-            valid_models = []
-            for m in data.get('models', []):
-                if 'generateContent' in m.get('supportedGenerationMethods', []):
-                    valid_models.append(m['name'])
-            
-            # Prefer 1.5-flash, then pro, then anything else
-            if not valid_models:
-                return None
-            
-            # Return the first valid one found
-            return valid_models[0]
-            
-        return None
-    except:
-        return None
-
-# ======================================================
-# 5. SIDEBAR SETUP
+# 4. SIDEBAR (KEY INPUT)
 # ======================================================
 with st.sidebar:
-    st.title("🔧 System Check")
+    st.title("🎧 Control Panel")
     
-    # 1. GET KEY
+    # MANUAL KEY OVERRIDE
     manual_key = st.text_input("🔑 Paste 'API Key 3' Here:", type="password")
+    
     if manual_key:
         api_key = manual_key
+        st.success("✅ Key Loaded")
     elif "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
+        st.info("✅ Using Secret Key")
     else:
         api_key = None
-
-    # 2. FIND MODEL AUTOMATICALLY
-    if api_key:
-        if "active_model" not in st.session_state or not st.session_state.active_model:
-            with st.spinner("Finding best AI model for you..."):
-                found_model = find_working_model(api_key)
-                if found_model:
-                    st.session_state.active_model = found_model
-                    st.success(f"✅ Connected to: {found_model}")
-                else:
-                    st.error("❌ Key works, but no models found.")
-        else:
-            st.success(f"✅ Connected to: {st.session_state.active_model}")
-    else:
-        st.warning("Waiting for API Key...")
+        st.warning("⚠️ Waiting for Key...")
 
 # ======================================================
-# 6. MUSIC GENERATOR
+# 5. ROBUST AI CONNECTOR
 # ======================================================
 def get_vibe_check(mood_text):
-    if not api_key: return "Please paste API Key first."
+    if not api_key: return "Please paste API Key in sidebar."
     
-    # Use the model we discovered automatically
-    model_name = st.session_state.get("active_model", "models/gemini-pro")
+    # ---------------------------------------------------------
+    # THE FIX: WE TRY STABLE MODELS FIRST (Avoids the 2.5 limit)
+    # ---------------------------------------------------------
+    priority_models = [
+        "gemini-1.5-flash",          # High Quota (1500/day)
+        "gemini-1.5-flash-latest",   # High Quota Backup
+        "gemini-1.5-pro",            # Medium Quota
+        "gemini-pro"                 # Old Reliable
+    ]
     
-    # If the model name doesn't start with models/, add it (just in case)
-    if not model_name.startswith("models/"):
-        model_name = f"models/{model_name}"
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
-    
-    prompt = f"Recommend 5 songs for mood: {mood_text}. Return valid JSON array with 'title' and 'artist'."
+    prompt = f"Recommend 5 songs for mood: {mood_text}. Return JSON array with 'title' and 'artist'."
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-            match = re.search(r"\[.*\]", text, re.DOTALL)
-            if match:
-                data = json.loads(match.group(0))
-                for song in data:
-                    q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
-                    song['link'] = f"https://www.youtube.com/results?search_query={q}"
-                return data
-        return f"Error ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"Connection Error: {str(e)}"
+    last_error = ""
+
+    # Try each model in order. If one fails, try the next.
+    for model in priority_models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            response = requests.post(url, json=payload)
+            
+            # IF SUCCESS (200 OK)
+            if response.status_code == 200:
+                text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                match = re.search(r"\[.*\]", text, re.DOTALL)
+                if match:
+                    data = json.loads(match.group(0))
+                    for song in data:
+                        q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
+                        song['link'] = f"https://www.youtube.com/results?search_query={q}"
+                    return data
+            
+            # IF QUOTA ERROR (429), just skip to the next model!
+            elif response.status_code == 429:
+                last_error = f"Quota hit on {model}, switching..."
+                continue
+            
+            else:
+                last_error = f"Error {response.status_code} on {model}"
+                
+        except:
+            continue
+            
+    return f"All models failed. Last error: {last_error}"
 
 # ======================================================
-# 7. MAIN APP UI
+# 6. MAIN APP UI
 # ======================================================
 st.title("🎵 VibeChecker")
 
 with st.form("mood_form"):
-    user_input = st.text_input("How are you feeling?", placeholder="Type 'Chill' and press Enter")
+    user_input = st.text_input("How are you feeling?", placeholder="Type 'Happy' and press Enter")
     submitted = st.form_submit_button("Analyze Mood")
 
 if submitted and user_input:
     if not api_key:
-        st.error("⚠️ Please paste your API Key in the sidebar first!")
+        st.error("⚠️ Please paste your API Key in the sidebar!")
     else:
-        with st.spinner("Curating playlist..."):
+        with st.spinner("Curating playlist (avoiding limits)..."):
             result = get_vibe_check(user_input)
             
             if isinstance(result, list):
