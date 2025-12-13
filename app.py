@@ -103,9 +103,10 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN ---
+# --- 6. THE BRAIN (SWITCHED TO 1.5-FLASH FOR HIGHER LIMITS) ---
 def get_vibe_check(mood):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+    # CHANGED MODEL HERE: gemini-1.5-flash has 1500 req/day limit (vs 20 for 2.5)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
     prompt = (
@@ -188,7 +189,6 @@ if target_mood:
             st.session_state.playlist = result
         else:
             st.session_state.error_debug = result
-    # We do NOT rerun here to keep flow simple
 
 # "Not Sure" Logic
 if not_sure_button and not st.session_state.questions_asked:
@@ -222,10 +222,9 @@ if st.session_state.questions_asked:
                 st.session_state.error_debug = result
         st.rerun()
 
-# --- 9. USER INPUT (FIXED LOOP ERROR) ---
+# --- 9. USER INPUT (FIXED LOOP) ---
 user_input = st.text_input("Or type your exact mood here...")
 
-# Logic Fix: Only run IF input exists AND it is NEW (different from current state)
 if user_input and user_input != st.session_state.current_mood:
     st.session_state.current_mood = user_input
     st.session_state.playlist = None
@@ -237,7 +236,6 @@ if user_input and user_input != st.session_state.current_mood:
             st.session_state.playlist = result
         else:
             st.session_state.error_debug = result
-    # NO st.rerun() here! We let it fall through to Section 10 below.
 
 # --- 10. DISPLAY RESULTS ---
 if st.session_state.error_debug:
