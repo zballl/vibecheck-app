@@ -103,10 +103,11 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN (FIXED MODEL NAME) ---
+# --- 6. THE BRAIN (FIXED ENDPOINT & MODEL) ---
 def get_vibe_check(mood):
-    # FIXED: Using 'gemini-1.5-flash-latest' which is the correct stable ID
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    # We switch to 'gemini-1.5-flash' but use the cleaner 'v1beta' URL format 
+    # ensuring we don't hit the 404 on the model name.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
     prompt = (
