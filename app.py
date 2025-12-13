@@ -5,6 +5,7 @@ import base64
 import random
 import re
 import os
+import urllib.parse  # Added to help make valid YouTube links
 
 # ======================================================
 # 1. PAGE CONFIG
@@ -48,7 +49,7 @@ else:
                 unsafe_allow_html=True)
 
 # ======================================================
-# 3. CUSTOM CSS
+# 3. CUSTOM CSS (FIXED VISIBILITY)
 # ======================================================
 st.markdown("""
 <style>
@@ -63,6 +64,7 @@ st.markdown("""
     -webkit-text-fill-color: transparent;
 }
 
+/* Added color: #333 to force black text on white cards */
 .song-card {
     background: white;
     border-radius: 12px;
@@ -71,6 +73,7 @@ st.markdown("""
     display: flex;
     align-items: center;
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    color: #333 !important; 
 }
 
 .album-art {
@@ -85,7 +88,8 @@ st.markdown("""
     font-size: 30px;
 }
 
-.song-title { font-size: 18px; font-weight: 800; }
+/* Force specific colors for text */
+.song-title { font-size: 18px; font-weight: 800; color: #000; }
 .song-artist { font-size: 14px; color: #555; }
 
 .listen-btn {
@@ -103,9 +107,15 @@ st.markdown("""
 # ======================================================
 # 4. API KEY
 # ======================================================
-api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+# Check secrets first, then environment
+api_key = None
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+elif os.environ.get("GOOGLE_API_KEY"):
+    api_key = os.environ.get("GOOGLE_API_KEY")
+
 if not api_key:
-    st.error("⚠️ GOOGLE_API_KEY is missing.")
+    st.error("⚠️ GOOGLE_API_KEY is missing. Please add it to .streamlit/secrets.toml")
     st.stop()
 
 # ======================================================
@@ -121,53 +131,51 @@ for key in ["playlist", "error", "current_mood"]:
 def get_vibe_check(mood_text):
     mood_text = mood_text.strip().lower()[:120]
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        f"models/gemini-flash-latest:generateContent?key={api_key}"
-    )
+    # Trying the most reliable free model endpoint
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
     prompt = (
-        "The user will give a mood. "
-        "It can be a single word (sad, chill, melancholy) "
-        "or a short sentence.\n\n"
-        f"User mood: '{mood_text}'\n\n"
-        "Recommend 5 songs that match this mood.\n\n"
-        "Return ONLY valid JSON.\n"
-        "Output a JSON array of exactly 5 objects.\n"
-        "Each object must include: title, artist, link.\n"
-        "No explanations or markdown."
+        f"User mood: '{mood_text}'\n"
+        "Recommend 5 songs.\n"
+        "Return ONLY valid JSON array.\n"
+        "Each object must have keys: 'title', 'artist'.\n"
+        "DO NOT invent links. Just title and artist."
     )
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    response = requests.post(url, json=payload)
-
-    if response.status_code == 429:
-        return "Too many requests. Please wait a few seconds."
-    if response.status_code != 200:
-        return f"API Error {response.status_code}"
-
-    text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-
+    
     try:
-        return json.loads(text)
-    except:
-        match = re.search(r"\[.*\]", text, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
+        response = requests.post(url, json=payload)
+        
+        if response.status_code != 200:
+            # Fallback to Pro if Flash fails (Fail-safe)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+            response = requests.post(url, json=payload)
 
-    return "Invalid AI response"
+        if response.status_code == 200:
+            text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            # Clean up json format
+            clean_text = text.replace("```json", "").replace("```", "").strip()
+            # Regex to find the list [...]
+            match = re.search(r"\[.*\]", clean_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group(0))
+                # AUTOMATICALLY BUILD YOUTUBE LINKS HERE
+                for song in data:
+                    query = f"{song.get('title')} {song.get('artist')}"
+                    # Converts "Song Name" to "Song+Name" for URL
+                    safe_query = urllib.parse.quote_plus(query)
+                    song['link'] = f"https://www.youtube.com/results?search_query={safe_query}"
+                return data
+                
+        return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Connection Error: {str(e)}"
 
 # ======================================================
 # 7. SIDEBAR
 # ======================================================
-SURPRISE_MOODS = [
-    "sad",
-    "chill",
-    "melancholy",
-    "peaceful night vibes",
-    "heartbroken but healing",
-    "energetic motivation"
-]
+SURPRISE_MOODS = ["sad", "chill", "melancholy", "energetic", "focus"]
 
 with st.sidebar:
     st.title("🎧 VibeChecker")
@@ -178,19 +186,18 @@ with st.sidebar:
         st.session_state.current_mood = mood
         st.session_state.error = None
 
-        with st.spinner("Surprising your vibe..."):
+        with st.spinner(f"Curating {mood}..."):
             result = get_vibe_check(mood)
             st.session_state.playlist = result if isinstance(result, list) else None
             st.session_state.error = None if isinstance(result, list) else result
+        st.rerun()
 
     if st.button("🔄 Reset"):
         st.session_state.playlist = None
         st.session_state.error = None
         st.session_state.current_mood = None
+        st.rerun()
 
-# ======================================================
-# 8. MAIN UI
-# ======================================================
 # ======================================================
 # 8. MAIN UI
 # ======================================================
@@ -200,33 +207,32 @@ st.markdown(
     """
     <div style="text-align:center; max-width:800px; margin:auto; color:#dddddd;">
         <p style="font-size:18px;">
-            <strong>VibeChecker</strong> is an AI-powered music recommendation system
-            that suggests songs based on your current mood.
-        </p>
-        <p style="font-size:16px;">
-            Simply type how you feel and VibeChecker will curate a playlist
-            that matches your vibe.
+            <strong>VibeChecker</strong> is an AI-powered music recommendation system.
         </p>
     </div>
+    <br>
     """,
     unsafe_allow_html=True
 )
 
-st.markdown("<br>", unsafe_allow_html=True)
+# --- FORM FIX: This makes "Enter" key work! ---
+with st.form(key='mood_form'):
+    user_input = st.text_input("Type your mood (e.g. sad, chill, melancholy)", 
+                               placeholder="Type here and press Enter...")
+    submit_button = st.form_submit_button("Analyze My Mood 🎶")
 
-user_input = st.text_input(
-    "Type your mood (e.g. sad, chill, melancholy, calm night vibes)"
-)
-
-if st.button("Analyze My Mood 🎶") and user_input.strip():
+if submit_button and user_input:
     st.session_state.current_mood = user_input.strip()
     st.session_state.error = None
 
     with st.spinner("Curating your vibe..."):
         result = get_vibe_check(user_input)
-        st.session_state.playlist = result if isinstance(result, list) else None
-        st.session_state.error = None if isinstance(result, list) else result
-
+        if isinstance(result, list):
+            st.session_state.playlist = result
+        else:
+            st.session_state.error = result
+            st.session_state.playlist = None
+    st.rerun()
 
 # ======================================================
 # 9. OUTPUT
@@ -243,7 +249,7 @@ if st.session_state.playlist:
             f"""
             <div class="song-card">
                 <div class="album-art">{random.choice(emojis)}</div>
-                <div>
+                <div style="flex-grow:1;">
                     <div class="song-title">{song.get("title","Track")}</div>
                     <div class="song-artist">{song.get("artist","Artist")}</div>
                 </div>
