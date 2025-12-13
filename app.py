@@ -28,7 +28,6 @@ def get_base64_of_bin_file(path):
 
 img_base64 = get_base64_of_bin_file("background.jpeg")
 
-# Default to dark color if image is missing, otherwise use the image
 if img_base64:
     bg_style = f"""
     <style>
@@ -73,15 +72,15 @@ st.markdown("""
     text-align: center;
     color: rgba(255, 255, 255, 0.85);
     font-size: 22px;
-    margin-bottom: 50px;
+    margin-bottom: 40px;
     font-weight: 300;
     letter-spacing: 1px;
 }
 
-/* 2. GLASSMORPHISM CARDS (Frosted Glass Look) */
+/* 2. GLASSMORPHISM CARDS */
 .song-card {
-    background: rgba(255, 255, 255, 0.1);  /* Very transparent white */
-    backdrop-filter: blur(15px);            /* The Blur Effect */
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 20px;
@@ -150,6 +149,7 @@ st.markdown("""
 if "playlist" not in st.session_state: st.session_state.playlist = None
 if "current_mood" not in st.session_state: st.session_state.current_mood = "Neutral"
 if "error" not in st.session_state: st.session_state.error = None
+if "show_quiz" not in st.session_state: st.session_state.show_quiz = False
 
 # Get Key
 if "GOOGLE_API_KEY" in st.secrets:
@@ -221,7 +221,6 @@ with st.sidebar:
     
     st.write("---")
 
-    # Expander for cleaner UI
     with st.expander("ℹ️ How it works"):
         st.write("""
         1. **Mood Input:** Type how you feel or pick a preset.
@@ -234,6 +233,7 @@ with st.sidebar:
     if st.button("🎲 Surprise Me"):
         vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy", "Hyped", "Focus"])
         st.session_state.current_mood = vibe
+        st.session_state.show_quiz = False # Hide quiz on surprise
         with st.spinner(f"Curating {vibe} vibes..."):
             res = get_vibe_playlist(vibe)
             if isinstance(res, list): st.session_state.playlist = res
@@ -244,6 +244,7 @@ with st.sidebar:
         st.session_state.playlist = None
         st.session_state.current_mood = "Neutral"
         st.session_state.error = None
+        st.session_state.show_quiz = False
         st.rerun()
 
 # ======================================================
@@ -259,32 +260,68 @@ b2 = c2.button("☂️ Melancholy")
 b3 = c3.button("🧘 Chill")
 b4 = c4.button("💔 Heartbroken")
 
+# Logic: Buttons
 clicked_mood = None
 if b1: clicked_mood = "Energetic"
 if b2: clicked_mood = "Melancholy"
 if b3: clicked_mood = "Chill"
 if b4: clicked_mood = "Heartbroken"
 
-# Handle Button Click
 if clicked_mood:
     st.session_state.current_mood = clicked_mood
+    st.session_state.show_quiz = False
     with st.spinner(f"Connecting to the VibeStream ({clicked_mood})..."):
         res = get_vibe_playlist(clicked_mood)
         if isinstance(res, list): st.session_state.playlist = res
         else: st.session_state.error = res
     st.rerun()
 
-# Input Bar
-with st.form("mood_form"):
-    user_input = st.text_input("", placeholder="Or describe your exact vibe here...")
-    submitted = st.form_submit_button("Analyze My Vibe ✨")
+# Logic: Quiz Toggle
+if st.button("🤔 Not sure? Help me decide"):
+    st.session_state.show_quiz = not st.session_state.show_quiz
+    st.session_state.playlist = None # Clear old results
 
-if submitted and user_input:
-    st.session_state.current_mood = user_input
+# ------------------------------------------------------
+# INPUT SECTION (Quiz vs Text)
+# ------------------------------------------------------
+final_mood_query = None
+
+if st.session_state.show_quiz:
+    st.markdown("### 📝 Answer these 3 questions:")
+    with st.form("quiz_form"):
+        c_q1, c_q2, c_q3 = st.columns(3)
+        q1 = c_q1.selectbox("Current Energy?", ["High Energy", "Low Energy", "Neutral"])
+        q2 = c_q2.selectbox("Social Battery?", ["Party Mode", "Leave me alone", "Need comfort"])
+        q3 = c_q3.selectbox("Emotional Tone?", ["Happy", "Sad", "Angry", "Calm", "Anxious"])
+        
+        submitted_quiz = st.form_submit_button("Analyze My Answers ✨")
+    
+    if submitted_quiz:
+        final_mood_query = f"User has {q1}, feels {q2}, and is emotionally {q3}"
+        st.session_state.current_mood = f"{q3} & {q1}" # For display title
+        st.session_state.show_quiz = False # Hide quiz after answer
+
+else:
+    # Standard Text Input
+    with st.form("mood_form"):
+        user_input = st.text_input("", placeholder="Or describe your exact vibe here...")
+        submitted_text = st.form_submit_button("Analyze My Vibe ✨")
+    
+    if submitted_text and user_input:
+        final_mood_query = user_input
+        st.session_state.current_mood = user_input
+
+# ------------------------------------------------------
+# EXECUTE SEARCH
+# ------------------------------------------------------
+if final_mood_query:
     with st.spinner("Analyzing emotional frequencies..."):
-        res = get_vibe_playlist(user_input)
-        if isinstance(res, list): st.session_state.playlist = res
-        else: st.session_state.error = res
+        res = get_vibe_playlist(final_mood_query)
+        if isinstance(res, list): 
+            st.session_state.playlist = res
+            st.session_state.error = None
+        else: 
+            st.session_state.error = res
     st.rerun()
 
 # ======================================================
