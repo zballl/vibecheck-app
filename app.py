@@ -44,52 +44,6 @@ st.markdown("""
     .title-text {
         font-size: 70px; font-weight: 900; text-align: center;
         background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;import streamlit as st
-import requests
-import json
-import base64
-import random
-import re
-import os
-
-# --- 1. SETUP PAGE ---
-st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
-
-# --- 2. IMAGE LOADER ---
-def get_base64_of_bin_file(bin_file):
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except:
-        return ""
-
-# --- 3. CUSTOM CSS ---
-img_base64 = get_base64_of_bin_file("background.jpeg")
-if img_base64:
-    background_style = f"""
-        <style>
-        .stApp {{
-            background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("data:image/jpeg;base64,{img_base64}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }}
-        </style>
-    """
-else:
-    background_style = "<style>.stApp { background-color: #0E1117; }</style>"
-
-st.markdown(background_style, unsafe_allow_html=True)
-
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    .title-text {
-        font-size: 70px; font-weight: 900; text-align: center;
-        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         padding-bottom: 20px;
     }
