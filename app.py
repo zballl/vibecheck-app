@@ -3,214 +3,259 @@ import requests
 import json
 import base64
 import random
+import re
+import os
+import urllib.parse
 
-# --- 1. SETUP PAGE ---
-st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
+# ======================================================
+# 1. PAGE CONFIG
+# ======================================================
+st.set_page_config(
+    page_title="VibeChecker", 
+    page_icon="🎵", 
+    layout="wide"
+)
 
-# --- 2. IMAGE LOADER ---
-def get_base64_of_bin_file(bin_file):
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except:
-        return ""
+# ======================================================
+# 2. STATE MANAGEMENT
+# ======================================================
+if "playlist" not in st.session_state: st.session_state.playlist = None
+if "current_mood" not in st.session_state: st.session_state.current_mood = "Neutral"
+if "error" not in st.session_state: st.session_state.error = None
 
-# --- 3. CUSTOM CSS ---
-img_base64 = get_base64_of_bin_file("background.jpeg")
+# ======================================================
+# 3. DYNAMIC CSS GENERATOR (THE VISUAL MAGIC)
+# ======================================================
+def get_dynamic_css(mood):
+    # Default Gradient (Dark/Neutral)
+    gradient = "linear-gradient(135deg, #0f2027, #203a43, #2c5364)"
+    
+    # Dynamic Mood Themes
+    if "Energetic" in mood or "Happy" in mood:
+        gradient = "linear-gradient(135deg, #fce38a, #f38181)" # Warm Orange/Pink
+    elif "Melancholy" in mood or "Sad" in mood:
+        gradient = "linear-gradient(135deg, #2b5876, #4e4376)" # Deep Blue/Purple
+    elif "Chill" in mood or "Relaxed" in mood:
+        gradient = "linear-gradient(135deg, #134e5e, #71b280)" # Teal/Green
+    elif "Heartbroken" in mood:
+        gradient = "linear-gradient(135deg, #4b1248, #f0c27b)" # Dark Red/Gold
+    elif "Dreamy" in mood:
+        gradient = "linear-gradient(135deg, #c33764, #1d2671)" # Pink/Deep Blue
 
-if img_base64:
-    background_style = f"""
-        <style>
-        .stApp {{
-            background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("data:image/jpeg;base64,{img_base64}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }}
-        </style>
-    """
-else:
-    background_style = "<style>.stApp { background-color: #0E1117; }</style>"
-
-st.markdown(background_style, unsafe_allow_html=True)
-
-st.markdown("""
+    return f"""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    /* 1. DYNAMIC BACKGROUND */
+    .stApp {{
+        background-image: {gradient};
+        background-size: 400% 400%;
+        animation: gradientBG 15s ease infinite;
+        background-attachment: fixed;
+    }}
     
-    /* TITLE */
-    .title-text {
-        font-size: 70px;
+    @keyframes gradientBG {{
+        0% {{ background-position: 0% 50%; }}
+        50% {{ background-position: 100% 50%; }}
+        100% {{ background-position: 0% 50%; }}
+    }}
+
+    /* 2. ANIMATED TITLE */
+    .big-title {{
+        font-size: 90px;
         font-weight: 900;
-        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
         text-align: center;
-        padding-bottom: 20px;
-    }
+        background: linear-gradient(to right, #ffffff, #00d2ff, #ffffff);
+        background-size: 200% auto;
+        color: transparent;
+        -webkit-background-clip: text;
+        background-clip: text;
+        animation: shine 3s linear infinite;
+        margin-bottom: 10px;
+        text-shadow: 0px 0px 20px rgba(0,210,255,0.3);
+    }}
     
-    /* SONG CARD CONTAINER */
-    .song-card {
-        background-color: white;
-        border-radius: 12px;
-        padding: 15px;
+    @keyframes shine {{
+        to {{ background-position: 200% center; }}
+    }}
+    
+    .subtitle {{
+        text-align: center;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 20px;
+        margin-bottom: 40px;
+        font-weight: 300;
+    }}
+
+    /* 3. GLASSMORPHISM CARDS */
+    .song-card {{
+        background: rgba(255, 255, 255, 0.15); /* Semi-transparent white */
+        backdrop-filter: blur(12px);            /* The Frost Effect */
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        padding: 20px;
         margin-bottom: 20px;
         display: flex;
         align-items: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        transition: transform 0.2s;
-    }
-    .song-card:hover { transform: scale(1.01); }
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        color: white;
+    }}
     
-    /* EMOJI ART BOX */
-    .album-art {
-        width: 80px;
-        height: 80px;
-        background-color: #f0f2f6;
-        border-radius: 8px;
+    .song-card:hover {{
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+        background: rgba(255, 255, 255, 0.25);
+    }}
+
+    .album-art {{
+        width: 70px;
+        height: 70px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 12px;
         margin-right: 20px;
-        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 40px; 
-    }
+        font-size: 35px;
+    }}
+
+    /* TEXT STYLES */
+    .song-title {{ font-size: 20px; font-weight: 800; color: white; margin-bottom: 4px; }}
+    .song-artist {{ font-size: 15px; color: rgba(255,255,255,0.8); }}
     
-    /* TEXT INFO */
-    .song-info { flex-grow: 1; color: #333; margin-right: 15px; }
-    .song-title { font-size: 20px; font-weight: 800; margin: 0; color: #000; line-height: 1.2; }
-    .song-artist { font-size: 16px; font-weight: 600; color: #555; margin: 2px 0 5px 0; }
-    .song-desc { font-size: 14px; color: #666; font-style: italic; margin: 0; line-height: 1.4; }
-    
-    /* LISTEN BUTTON */
-    .listen-btn {
-        background-color: white;
-        color: #00d2ff;
-        border: 2px solid #00d2ff;
-        padding: 8px 20px;
-        border-radius: 20px;
+    /* BUTTON STYLES */
+    .listen-btn {{
+        background: white;
+        color: #333;
+        padding: 8px 24px;
+        border-radius: 30px;
         text-decoration: none;
         font-weight: bold;
-        font-size: 14px;
-        white-space: nowrap;
         transition: all 0.2s;
-        height: 40px;
-        line-height: 20px;
-        display: flex;
-        align-items: center;
-    }
-    .listen-btn:hover { background-color: #00d2ff; color: white; }
-    
-    /* BUTTON STYLING */
-    .stButton button {
-        width: 100%;
-        height: 50px;
-        border-radius: 10px;
-        font-weight: 600;
-        border: 1px solid #444;
-        background-color: rgba(20,20,20,0.8);
+        border: none;
+    }}
+    .listen-btn:hover {{
+        background: #00d2ff;
         color: white;
-    }
-    .stButton button:hover { border-color: #00d2ff; color: #00d2ff; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 4. API SETUP ---
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-except:
-    st.error("⚠️ API Key missing! Check your Secrets.")
-    st.stop()
-
-# --- 5. STATE MANAGEMENT ---
-if "playlist" not in st.session_state:
-    st.session_state.playlist = None
-if "current_mood" not in st.session_state:
-    st.session_state.current_mood = ""
-if "questions_mode" not in st.session_state:
-    st.session_state.questions_mode = False
-if "ai_questions" not in st.session_state:
-    st.session_state.ai_questions = ""
-if "error_msg" not in st.session_state:
-    st.session_state.error_msg = None
-
-# --- 6. AI FUNCTIONS ---
-
-# Function A: Generate Playlist (JSON)
-def get_vibe_playlist(prompt_input):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
+        box-shadow: 0 0 15px #00d2ff;
+    }}
     
-    final_prompt = (
-        f"Input: '{prompt_input}'\n"
-        "TASK: Recommend 5 songs.\n"
-        "RULES:\n"
-        "1. STRICT: If input is gibberish/nonsense -> RETURN JSON: [{'error': 'invalid'}]\n"
-        "2. Include 'desc' (short reason) and 'link' (YouTube Search).\n"
-        "OUTPUT FORMAT (Raw JSON only):\n"
-        "[{\"title\": \"Song\", \"artist\": \"Artist\", \"desc\": \"Reason.\", \"link\": \"https://youtube...\"}]"
+    /* REMOVE DEFAULT STREAMLIT PADDING */
+    #MainMenu, footer {{ visibility: hidden; }}
+    .block-container {{ padding-top: 2rem; }}
+    </style>
+    """
+
+# Apply the CSS based on current state
+st.markdown(get_dynamic_css(st.session_state.current_mood), unsafe_allow_html=True)
+
+# ======================================================
+# 4. ROBUST AI LOGIC (Auto-Discovery)
+# ======================================================
+# 1. Get Key
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+elif os.environ.get("GOOGLE_API_KEY"):
+    api_key = os.environ.get("GOOGLE_API_KEY")
+else:
+    api_key = None
+
+# 2. Find Working Model
+def get_valid_model(key):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            for model in data.get('models', []):
+                if 'generateContent' in model.get('supportedGenerationMethods', []) and 'gemini' in model.get('name'):
+                    return model.get('name')
+        return "models/gemini-pro" # Fallback
+    except:
+        return "models/gemini-pro"
+
+# 3. Generate Music
+def get_vibe_playlist(mood_text):
+    if not api_key: return "⚠️ API Key Missing. Check .streamlit/secrets.toml"
+    
+    model_name = get_valid_model(api_key)
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+    
+    prompt = (
+        f"Recommend 5 songs for mood: '{mood_text}'. "
+        "Return ONLY a JSON array. "
+        "Format: [{'title': 'Song', 'artist': 'Artist', 'desc': 'Short reason'}]. "
+        "NO markdown."
     )
     
-    data = {"contents": [{"parts": [{"text": final_prompt}]}]}
-    try:
-        res = requests.post(url, headers=headers, json=data)
-        if res.status_code == 200:
-            text = res.json()['candidates'][0]['content']['parts'][0]['text']
-            clean = text.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean)
-    except:
-        return None
-    return None
-
-# Function B: Generate Questions (Text)
-def get_therapy_questions():
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     
-    prompt = "Ask 3 short, creative questions to help a user figure out their mood. Return ONLY the questions as a numbered list."
-    
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        res = requests.post(url, headers=headers, json=data)
-        if res.status_code == 200:
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return "1. High energy or low energy?\n2. Lyrics or instrumental?\n3. Happy or Sad?"
-    return "Error generating questions."
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            clean_text = text.replace("```json", "").replace("```", "").strip()
+            match = re.search(r"\[.*\]", clean_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group(0))
+                for song in data:
+                    q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
+                    song['link'] = f"https://www.youtube.com/results?search_query={q}"
+                return data
+        elif response.status_code == 429:
+            return "Quota Limit Reached. Please try again later."
+        else:
+            return f"Error {response.status_code}"
+    except Exception as e:
+        return f"Connection Error: {str(e)}"
 
-# --- 7. SIDEBAR ---
+# ======================================================
+# 5. SIDEBAR (Enhanced)
+# ======================================================
 with st.sidebar:
-    st.title("🎧 Control Panel")
-    st.markdown("### ℹ️ About VibeChecker")
-    st.info("Your personal AI Music Curator.")
+    st.title("🎧 Control Center")
+    
+    # 1. Brief Description
+    st.markdown("""
+    **VibeChecker** is your intelligent music companion. 
+    It uses Google's Gemini AI to analyze your emotions and curate 
+    the perfect playlist instantly.
+    """)
+    
+    st.write("---")
+
+    # 2. "How It Works" Expander
+    with st.expander("ℹ️ How it works"):
+        st.write("""
+        1. **Select a Mood:** Choose a preset or type your own.
+        2. **AI Analysis:** Gemini scans millions of tracks to match your feeling.
+        3. **Listen:** Get instant YouTube links for 5 curated songs.
+        """)
     
     st.write("---")
     
-    # NEW SURPRISE BUTTON
+    # 3. Controls
     if st.button("🎲 Surprise Me"):
-        random_vibe = random.choice(["Energetic", "Melancholy", "Chill", "Heartbroken", "Confident", "Dreamy"])
-        st.session_state.current_mood = random_vibe
-        st.session_state.questions_mode = False 
-        
-        with st.spinner(f"Surprise! Curating {random_vibe} tracks..."):
-            data = get_vibe_playlist(random_vibe)
-            st.session_state.playlist = data
-            st.session_state.error_msg = None
+        vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy", "Hyped"])
+        st.session_state.current_mood = vibe
+        with st.spinner(f"Curating {vibe} vibes..."):
+            res = get_vibe_playlist(vibe)
+            if isinstance(res, list): st.session_state.playlist = res
+            else: st.session_state.error = res
         st.rerun()
 
-    st.write("")
     if st.button("🔄 Reset App"):
         st.session_state.playlist = None
-        st.session_state.current_mood = ""
-        st.session_state.questions_mode = False
-        st.session_state.ai_questions = ""
-        st.session_state.error_msg = None
+        st.session_state.current_mood = "Neutral"
+        st.session_state.error = None
         st.rerun()
 
-# --- 8. MAIN UI ---
-st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
+# ======================================================
+# 6. MAIN UI
+# ======================================================
+# Big Animated Title
+st.markdown('<div class="big-title">VibeChecker</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI-Powered Mood Curation</div>', unsafe_allow_html=True)
 
 # Mood Buttons
 c1, c2, c3, c4 = st.columns(4)
@@ -225,97 +270,52 @@ if b2: clicked_mood = "Melancholy"
 if b3: clicked_mood = "Chill"
 if b4: clicked_mood = "Heartbroken"
 
-# "Not Sure" Button Logic
-st.write("")
-if st.button("🤔 Not sure how I feel?"):
-    with st.spinner("Consulting AI Therapist..."):
-        questions = get_therapy_questions()
-        st.session_state.ai_questions = questions
-        st.session_state.questions_mode = True
-        st.session_state.playlist = None 
-        st.session_state.error_msg = None
-    st.rerun()
-
-# --- 9. INPUT SECTION ---
-
-# If in Question Mode, show the questions
-if st.session_state.questions_mode:
-    st.info("Answer these 3 questions in the box below:")
-    st.markdown(f"**{st.session_state.ai_questions}**")
-    placeholder_text = "Type your answers here..."
-else:
-    placeholder_text = "Or type your exact mood here..."
-
-# Input Bar
-user_input = st.text_input("", placeholder=placeholder_text)
-
-# --- 10. LOGIC CORE ---
-
-# Handle Text Input (Enter Key)
-if user_input:
-    # Determine what to ask the AI
-    if st.session_state.questions_mode:
-        final_prompt = f"User answered these questions: {user_input}. Determine mood and recommend songs."
-        display_mood = "your custom vibe"
-        # We turn off question mode so the playlist shows up
-        st.session_state.questions_mode = False 
-    else:
-        # Normal Mode
-        final_prompt = user_input
-        display_mood = user_input
-
-    st.session_state.current_mood = display_mood
-    st.session_state.error_msg = None
-    
-    with st.spinner("Curating tracks..."):
-        data = get_vibe_playlist(final_prompt)
-        
-        # Error Logic
-        if not data:
-             st.session_state.error_msg = "⚠️ Connection Error. Try again."
-             st.session_state.playlist = None
-        elif isinstance(data, list) and len(data) > 0 and "error" in data[0]:
-             st.session_state.error_msg = "🚫 That doesn't look like a real emotion! Please try again."
-             st.session_state.playlist = None
-        else:
-             st.session_state.playlist = data
-    st.rerun()
-
 # Handle Button Click
 if clicked_mood:
     st.session_state.current_mood = clicked_mood
-    st.session_state.questions_mode = False
-    st.session_state.error_msg = None
-    
-    with st.spinner(f"Curating tracks for {clicked_mood}..."):
-        data = get_vibe_playlist(clicked_mood)
-        st.session_state.playlist = data
+    with st.spinner(f"Connecting to the VibeStream ({clicked_mood})..."):
+        res = get_vibe_playlist(clicked_mood)
+        if isinstance(res, list): st.session_state.playlist = res
+        else: st.session_state.error = res
     st.rerun()
 
-# --- 11. RENDER OUTPUT ---
+# Input Bar
+with st.form("mood_form"):
+    user_input = st.text_input("", placeholder="Or describe your exact vibe here...")
+    submitted = st.form_submit_button("Analyze My Vibe ✨")
 
-# Show Error if exists
-if st.session_state.error_msg:
-    st.error(st.session_state.error_msg)
+if submitted and user_input:
+    st.session_state.current_mood = user_input
+    with st.spinner("Analyzing emotional frequencies..."):
+        res = get_vibe_playlist(user_input)
+        if isinstance(res, list): st.session_state.playlist = res
+        else: st.session_state.error = res
+    st.rerun()
 
-# Show Playlist if exists
+# ======================================================
+# 7. OUTPUT AREA (Glassmorphism Cards)
+# ======================================================
+if st.session_state.error:
+    st.error(st.session_state.error)
+
 if st.session_state.playlist:
-    st.write("---")
-    st.markdown(f"### 🎶 Recommended for {st.session_state.current_mood}")
+    st.markdown(f"### 🎶 Selected for: **{st.session_state.current_mood}**")
     
-    music_emojis = ["🎵", "🎧", "🎸", "🎹", "🎷", "🥁", "🎤", "🎼", "💿", "📻", "🎹", "🎻"]
+    emojis = ["🎵", "🎸", "🎧", "🎹", "🎷", "💿"]
     
     for song in st.session_state.playlist:
-        random_emoji = random.choice(music_emojis)
-        
-        st.markdown(f"""
-        <div class="song-card">
-            <div class="album-art">{random_emoji}</div>
-            <div class="song-info">
-                <div class="song-title">{song.get('title', 'Unknown')}</div>
-                <div class="song-artist">{song.get('artist', 'Unknown')}</div>
-                <p class="song-desc">"{song.get('desc', 'A great track for this vibe.')}"</p>
+        st.markdown(
+            f"""
+            <div class="song-card">
+                <div class="album-art">{random.choice(emojis)}</div>
+                <div style="flex-grow:1;">
+                    <div class="song-title">{song.get('title')}</div>
+                    <div class="song-artist">{song.get('artist')}</div>
+                    <div style="font-size:12px; opacity:0.7;">{song.get('desc','')}</div>
+                </div>
+                <a class="listen-btn" href="{song.get('link')}" target="_blank">▶ Play</a>
             </div>
-            <a href="{song.get('link', 'https://www.youtube.com')}" target="_blank" class="listen-btn">▶ Listen</a>
-        </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True
+        )
+
