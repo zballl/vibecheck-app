@@ -80,21 +80,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. API SETUP (DEBUG MODE) ---
+# --- 4. API SETUP (WITH DEBUGGING) ---
 api_key = None
-source = "Unknown"
+key_source = "None"
 
-# Try loading from Secrets first
 if "GOOGLE_API_KEY" in st.secrets:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    source = "Secrets"
-# Fallback to Environment Variable
+    key_source = "Secrets (Streamlit)"
 elif os.environ.get("GOOGLE_API_KEY"):
     api_key = os.environ.get("GOOGLE_API_KEY")
-    source = "Env Var"
+    key_source = "Environment Variable"
 
 if not api_key:
-    st.error("⚠️ API Key missing! Check your Secrets or Render Environment.")
+    st.error("⚠️ API Key missing! Check your Secrets.")
     st.stop()
 
 # --- 5. STATE MANAGEMENT ---
@@ -105,18 +103,14 @@ if 'questions_asked' not in st.session_state: st.session_state.questions_asked =
 if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
-if 'used_model' not in st.session_state: st.session_state.used_model = ""
 
-# --- 6. THE BRAIN (AGGRESSIVE CONNECTION) ---
+# --- 6. THE BRAIN (STABLE v1 ENDPOINT) ---
 def get_vibe_check(mood):
-    # EXTENSIVE MODEL LIST: Hits every possible variation to find one that works
+    # FIXED: Using 'v1' instead of 'v1beta'. This is much more stable.
+    # We try 1.5-flash first (most generous limit).
     models_to_try = [
-        "gemini-2.0-flash-exp",     # Newest (likely works for new keys)
-        "gemini-1.5-flash",         # Standard
-        "gemini-1.5-flash-001",     # Specific Version
-        "gemini-1.5-flash-latest",  # Alias
-        "gemini-1.5-pro",           # Pro Version
-        "gemini-pro"                # Oldest/Stable fallback
+        "gemini-1.5-flash",
+        "gemini-1.5-pro-latest"
     ]
     
     prompt = (
@@ -134,41 +128,40 @@ def get_vibe_check(mood):
 
     for model_name in models_to_try:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            # NOTICE: 'v1' instead of 'v1beta'
+            url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
             response = requests.post(url, headers=headers, json=data)
             
-            # If 200 OK, we found a winner!
             if response.status_code == 200:
                 try:
                     text = response.json()['candidates'][0]['content']['parts'][0]['text']
                     match = re.search(r"\[.*\]", text, re.DOTALL)
                     if match:
                         clean_json = match.group(0)
-                        st.session_state.used_model = model_name # Save which one worked
                         return json.loads(clean_json) 
                 except:
-                    error_log.append(f"{model_name} (Parse Fail)")
                     continue
             else:
-                error_log.append(f"{model_name} ({response.status_code})")
+                error_log.append(f"{model_name}: {response.status_code}")
                 continue
 
         except Exception as e:
-            error_log.append(f"{model_name} (Conn Error)")
+            error_log.append(f"{model_name}: Connection Failed")
             continue
 
-    return f"ALL Models Failed. Logs: {', '.join(error_log)}"
+    return f"Failed. Errors: {', '.join(error_log)}. Please check if your API Key is correct."
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
     st.title("🎧 Control Panel")
-    st.info("VibeChecker AI")
     
-    # DEBUG INFO
-    st.caption(f"🔑 Key Source: {source}")
-    st.caption(f"🆔 Key ID: {api_key[:4]}...{api_key[-4:]}")
-    if st.session_state.used_model:
-        st.success(f"✅ Connected to: {st.session_state.used_model}")
+    # --- KEY CHECKER ---
+    # This helps you verify you are using the NEW key
+    st.caption("🔑 API Key Status")
+    masked_key = f"{api_key[:4]}...{api_key[-4:]}"
+    st.code(masked_key, language="text")
+    st.caption(f"Source: {key_source}")
+    st.write("---")
     
     if st.button("🎲 Surprise Me"):
         vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy"])
