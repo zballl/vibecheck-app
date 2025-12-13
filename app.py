@@ -80,18 +80,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. API SETUP ---
-try:
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    else:
-        api_key = os.environ.get("GOOGLE_API_KEY")
-    
-    if not api_key:
-        st.error("⚠️ API Key missing! Check your Secrets.")
-        st.stop()
-except:
-    st.error("⚠️ Error loading API Key.")
+# --- 4. API SETUP (DEBUG MODE) ---
+api_key = None
+source = "Unknown"
+
+# Try loading from Secrets first
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    source = "Secrets"
+# Fallback to Environment Variable
+elif os.environ.get("GOOGLE_API_KEY"):
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    source = "Env Var"
+
+if not api_key:
+    st.error("⚠️ API Key missing! Check your Secrets or Render Environment.")
     st.stop()
 
 # --- 5. STATE MANAGEMENT ---
@@ -102,15 +105,18 @@ if 'questions_asked' not in st.session_state: st.session_state.questions_asked =
 if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
+if 'used_model' not in st.session_state: st.session_state.used_model = ""
 
-# --- 6. THE BRAIN (MULTI-MODEL FAILSAFE) ---
+# --- 6. THE BRAIN (AGGRESSIVE CONNECTION) ---
 def get_vibe_check(mood):
-    # We list the models from most likely to work to least likely
-    # "gemini-1.5-flash" is usually the most stable free model
+    # EXTENSIVE MODEL LIST: Hits every possible variation to find one that works
     models_to_try = [
-        "gemini-1.5-flash", 
-        "gemini-1.5-pro",
-        "gemini-1.5-flash-8b"
+        "gemini-2.0-flash-exp",     # Newest (likely works for new keys)
+        "gemini-1.5-flash",         # Standard
+        "gemini-1.5-flash-001",     # Specific Version
+        "gemini-1.5-flash-latest",  # Alias
+        "gemini-1.5-pro",           # Pro Version
+        "gemini-pro"                # Oldest/Stable fallback
     ]
     
     prompt = (
@@ -124,43 +130,45 @@ def get_vibe_check(mood):
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {'Content-Type': 'application/json'}
     
-    last_error_log = []
+    error_log = []
 
-    # LOOP: Try each model one by one
     for model_name in models_to_try:
         try:
-            # We use the standard 'v1beta' path which is safest for API keys
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             response = requests.post(url, headers=headers, json=data)
             
-            # If successful (200 OK)
+            # If 200 OK, we found a winner!
             if response.status_code == 200:
                 try:
                     text = response.json()['candidates'][0]['content']['parts'][0]['text']
                     match = re.search(r"\[.*\]", text, re.DOTALL)
                     if match:
                         clean_json = match.group(0)
-                        return json.loads(clean_json) # SUCCESS! RETURN DATA
+                        st.session_state.used_model = model_name # Save which one worked
+                        return json.loads(clean_json) 
                 except:
-                    # If JSON parsing fails, log it and try next model
-                    last_error_log.append(f"{model_name} (Parse Error)")
+                    error_log.append(f"{model_name} (Parse Fail)")
                     continue
             else:
-                # If 404/429 Error, log it and try next model
-                last_error_log.append(f"{model_name} ({response.status_code})")
+                error_log.append(f"{model_name} ({response.status_code})")
                 continue
 
         except Exception as e:
-            last_error_log.append(f"{model_name} (Connection Error)")
+            error_log.append(f"{model_name} (Conn Error)")
             continue
 
-    # If we finish the loop and nothing worked:
-    return f"Failed to connect. Errors: {', '.join(last_error_log)}"
+    return f"ALL Models Failed. Logs: {', '.join(error_log)}"
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
     st.title("🎧 Control Panel")
     st.info("VibeChecker AI")
+    
+    # DEBUG INFO
+    st.caption(f"🔑 Key Source: {source}")
+    st.caption(f"🆔 Key ID: {api_key[:4]}...{api_key[-4:]}")
+    if st.session_state.used_model:
+        st.success(f"✅ Connected to: {st.session_state.used_model}")
     
     if st.button("🎲 Surprise Me"):
         vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy"])
@@ -210,7 +218,7 @@ if target_mood:
         else:
             st.session_state.error_debug = result
 
-# Questions Logic
+# Questions
 if not_sure_button and not st.session_state.questions_asked:
     st.session_state.questions_asked = True
 
