@@ -44,6 +44,52 @@ st.markdown("""
     .title-text {
         font-size: 70px; font-weight: 900; text-align: center;
         background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;import streamlit as st
+import requests
+import json
+import base64
+import random
+import re
+import os
+
+# --- 1. SETUP PAGE ---
+st.set_page_config(page_title="VibeChecker", page_icon="🎵", layout="wide")
+
+# --- 2. IMAGE LOADER ---
+def get_base64_of_bin_file(bin_file):
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except:
+        return ""
+
+# --- 3. CUSTOM CSS ---
+img_base64 = get_base64_of_bin_file("background.jpeg")
+if img_base64:
+    background_style = f"""
+        <style>
+        .stApp {{
+            background-image: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("data:image/jpeg;base64,{img_base64}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        </style>
+    """
+else:
+    background_style = "<style>.stApp { background-color: #0E1117; }</style>"
+
+st.markdown(background_style, unsafe_allow_html=True)
+
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    .title-text {
+        font-size: 70px; font-weight: 900; text-align: center;
+        background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         padding-bottom: 20px;
     }
@@ -103,13 +149,14 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN (TRYING GEMINI 2.0 & 1.5) ---
+# --- 6. THE BRAIN (MULTI-MODEL FAILSAFE) ---
 def get_vibe_check(mood):
-    # We try Gemini 2.0 Flash Exp first (Fresh Quota)
-    # Then fallback to Gemini 1.5 Flash (Standard)
+    # We list the models from most likely to work to least likely
+    # "gemini-1.5-flash" is usually the most stable free model
     models_to_try = [
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-flash"
+        "gemini-1.5-flash", 
+        "gemini-1.5-pro",
+        "gemini-1.5-flash-8b"
     ]
     
     prompt = (
@@ -123,33 +170,38 @@ def get_vibe_check(mood):
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {'Content-Type': 'application/json'}
     
-    error_log = []
+    last_error_log = []
 
+    # LOOP: Try each model one by one
     for model_name in models_to_try:
         try:
+            # We use the standard 'v1beta' path which is safest for API keys
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             response = requests.post(url, headers=headers, json=data)
             
+            # If successful (200 OK)
             if response.status_code == 200:
                 try:
                     text = response.json()['candidates'][0]['content']['parts'][0]['text']
                     match = re.search(r"\[.*\]", text, re.DOTALL)
                     if match:
                         clean_json = match.group(0)
-                        return json.loads(clean_json) # SUCCESS!
+                        return json.loads(clean_json) # SUCCESS! RETURN DATA
                 except:
-                    error_log.append(f"{model_name}: Parse Error")
+                    # If JSON parsing fails, log it and try next model
+                    last_error_log.append(f"{model_name} (Parse Error)")
                     continue
             else:
-                error_log.append(f"{model_name}: {response.status_code} Error")
+                # If 404/429 Error, log it and try next model
+                last_error_log.append(f"{model_name} ({response.status_code})")
                 continue
 
         except Exception as e:
-            error_log.append(f"{model_name}: {str(e)}")
+            last_error_log.append(f"{model_name} (Connection Error)")
             continue
 
-    # If all failed, return ALL errors so we know why
-    return f"ALL Models Failed. Details: {', '.join(error_log)}"
+    # If we finish the loop and nothing worked:
+    return f"Failed to connect. Errors: {', '.join(last_error_log)}"
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
@@ -204,7 +256,7 @@ if target_mood:
         else:
             st.session_state.error_debug = result
 
-# Questions
+# Questions Logic
 if not_sure_button and not st.session_state.questions_asked:
     st.session_state.questions_asked = True
 
