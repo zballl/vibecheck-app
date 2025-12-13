@@ -6,6 +6,7 @@ import random
 import re
 import os
 import urllib.parse
+import ast # <--- Added for robust parsing
 
 # ======================================================
 # 1. PAGE CONFIG
@@ -45,7 +46,7 @@ else:
 st.markdown(bg_style, unsafe_allow_html=True)
 
 # ======================================================
-# 3. ADVANCED STYLING (Glassmorphism & Animation)
+# 3. ADVANCED STYLING
 # ======================================================
 st.markdown("""
 <style>
@@ -180,11 +181,12 @@ def get_vibe_playlist(mood_text):
     model_name = get_valid_model(api_key)
     url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
     
+    # 🚨 CRITICAL FIX: Updated prompt example to use DOUBLE QUOTES " "
     prompt = (
         f"Recommend 5 songs for mood: '{mood_text}'. "
         "Return ONLY a JSON array. "
-        "Format: [{'title': 'Song', 'artist': 'Artist', 'desc': 'Very short reason (5 words)'}]. "
-        "NO markdown."
+        "Format: [{\"title\": \"Song Name\", \"artist\": \"Artist Name\", \"desc\": \"Short reason\"}]. "
+        "NO markdown. STRICT JSON."
     )
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -194,25 +196,35 @@ def get_vibe_playlist(mood_text):
         if response.status_code == 200:
             text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
             
-            # --- JSON REPAIR ENGINE ---
-            # 1. Remove markdown backticks
+            # --- ROBUST CLEANUP ---
             clean_text = text.replace("```json", "").replace("```", "").strip()
             
-            # 2. Extract only the list part [ ... ]
+            # Extract list [...]
             match = re.search(r"\[.*\]", clean_text, re.DOTALL)
             if match:
                 clean_text = match.group(0)
             
-            # 3. Parse JSON
+            # --- DUAL PARSING STRATEGY ---
+            data = None
             try:
+                # 1. Try Standard JSON (Strict)
                 data = json.loads(clean_text)
+            except:
+                try:
+                    # 2. Try Python Eval (Forgiving - handles single quotes)
+                    data = ast.literal_eval(clean_text)
+                except:
+                    return "AI Error: Response was not valid data. Please try again."
+
+            # Add Links
+            if isinstance(data, list):
                 for song in data:
                     q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
                     song['link'] = f"https://www.youtube.com/results?search_query={q}"
                 return data
-            except json.JSONDecodeError as e:
-                return f"AI Error: Invalid JSON Format ({str(e)})"
-                
+            else:
+                return "AI Error: Did not return a list."
+
         elif response.status_code == 429:
             return "Quota Limit Reached. Please try again later."
         else:
@@ -225,24 +237,16 @@ def get_vibe_playlist(mood_text):
 # ======================================================
 with st.sidebar:
     st.title("🎧 Control Center")
-    
-    st.markdown("""
-    **VibeChecker** detects your mood and curates the perfect playlist using advanced AI.
-    """)
-    
+    st.markdown("**VibeChecker** detects your mood and curates the perfect playlist.")
     st.write("---")
 
     with st.expander("ℹ️ How it works"):
-        st.write("""
-        1. **Mood Input:** Type how you feel or pick a preset.
-        2. **AI Processing:** We analyze emotional context.
-        3. **Curation:** You get 5 perfect songs with direct links.
-        """)
+        st.write("1. **Mood Input:** Type how you feel or pick a preset.\n2. **AI Analysis:** We analyze emotional context.\n3. **Curation:** You get 5 perfect songs.")
     
     st.write("---")
     
     if st.button("🎲 Surprise Me"):
-        vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy", "Hyped", "Focus"])
+        vibe = random.choice(["Energetic", "Chill", "Melancholy", "Dreamy", "Hyped"])
         st.session_state.current_mood = vibe
         st.session_state.show_quiz = False
         with st.spinner(f"Curating {vibe} vibes..."):
@@ -264,14 +268,12 @@ with st.sidebar:
 st.markdown('<div class="big-title">VibeChecker</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI-Powered Mood Curation</div>', unsafe_allow_html=True)
 
-# Mood Buttons
 c1, c2, c3, c4 = st.columns(4)
 b1 = c1.button("⚡ Energetic")
 b2 = c2.button("☂️ Melancholy")
 b3 = c3.button("🧘 Chill")
 b4 = c4.button("💔 Heartbroken")
 
-# Logic: Buttons
 clicked_mood = None
 if b1: clicked_mood = "Energetic"
 if b2: clicked_mood = "Melancholy"
@@ -287,14 +289,11 @@ if clicked_mood:
         else: st.session_state.error = res
     st.rerun()
 
-# Logic: Quiz Toggle
 if st.button("🤔 Not sure? Help me decide"):
     st.session_state.show_quiz = not st.session_state.show_quiz
     st.session_state.playlist = None 
 
-# ------------------------------------------------------
-# INPUT SECTION (Quiz vs Text)
-# ------------------------------------------------------
+# INPUT SECTION
 final_mood_query = None
 
 if st.session_state.show_quiz:
@@ -304,14 +303,12 @@ if st.session_state.show_quiz:
         q1 = c_q1.selectbox("Current Energy?", ["High Energy", "Low Energy", "Neutral"])
         q2 = c_q2.selectbox("Social Battery?", ["Party Mode", "Leave me alone", "Need comfort"])
         q3 = c_q3.selectbox("Emotional Tone?", ["Happy", "Sad", "Angry", "Calm", "Anxious"])
-        
         submitted_quiz = st.form_submit_button("Analyze My Answers ✨")
     
     if submitted_quiz:
         final_mood_query = f"User has {q1}, feels {q2}, and is emotionally {q3}"
         st.session_state.current_mood = f"{q3} & {q1}" 
         st.session_state.show_quiz = False
-
 else:
     with st.form("mood_form"):
         user_input = st.text_input("", placeholder="Or describe your exact vibe here...")
@@ -321,9 +318,7 @@ else:
         final_mood_query = user_input
         st.session_state.current_mood = user_input
 
-# ------------------------------------------------------
 # EXECUTE SEARCH
-# ------------------------------------------------------
 if final_mood_query:
     with st.spinner("Analyzing emotional frequencies..."):
         res = get_vibe_playlist(final_mood_query)
@@ -342,7 +337,6 @@ if st.session_state.error:
 
 if st.session_state.playlist:
     st.markdown(f"### 🎶 Selected for: **{st.session_state.current_mood}**")
-    
     emojis = ["🎵", "🎸", "🎧", "🎹", "🎷", "💿", "🎤", "🎻"]
     
     for song in st.session_state.playlist:
