@@ -103,10 +103,10 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN (SWITCHED TO 1.5-FLASH FOR HIGHER LIMITS) ---
+# --- 6. THE BRAIN (FIXED MODEL NAME) ---
 def get_vibe_check(mood):
-    # CHANGED MODEL HERE: gemini-1.5-flash has 1500 req/day limit (vs 20 for 2.5)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # FIXED: Using 'gemini-1.5-flash-latest' which is the correct stable ID
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     
     prompt = (
@@ -222,7 +222,7 @@ if st.session_state.questions_asked:
                 st.session_state.error_debug = result
         st.rerun()
 
-# --- 9. USER INPUT (FIXED LOOP) ---
+# --- 9. USER INPUT ---
 user_input = st.text_input("Or type your exact mood here...")
 
 if user_input and user_input != st.session_state.current_mood:
