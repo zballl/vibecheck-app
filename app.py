@@ -231,5 +231,3 @@ if st.session_state.playlist:
             <a href="{song.get('link', 'https://www.youtube.com')}" target="_blank" class="listen-btn">▶ Listen</a>
         </div>
         """, unsafe_allow_html=True)
-
-
