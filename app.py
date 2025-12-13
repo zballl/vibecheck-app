@@ -50,6 +50,7 @@ st.markdown(bg_style, unsafe_allow_html=True)
 # ======================================================
 st.markdown("""
 <style>
+/* Animated Title */
 .big-title {
     font-size: 80px;
     font-weight: 900;
@@ -63,8 +64,10 @@ st.markdown("""
     text-shadow: 0px 0px 30px rgba(0,210,255,0.4);
 }
 @keyframes shine { to { background-position: 200% center; } }
-.subtitle { text-align: center; color: rgba(255,255,255,0.8); margin-bottom: 40px; }
 
+.subtitle { text-align: center; color: rgba(255,255,255,0.8); margin-bottom: 40px; font-weight: 300; letter-spacing: 1px; }
+
+/* Glassmorphism Cards */
 .song-card {
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
@@ -76,20 +79,25 @@ st.markdown("""
     display: flex;
     align-items: center;
     color: white;
+    transition: transform 0.2s;
 }
 .song-card:hover { transform: translateY(-3px); background: rgba(255,255,255,0.2); }
-.album-art { font-size: 30px; margin-right: 20px; }
+
+.album-art { font-size: 30px; margin-right: 20px; width: 60px; text-align: center; }
+
 .listen-btn {
     background: white; color: #333; padding: 8px 20px;
     border-radius: 20px; text-decoration: none; font-weight: bold;
 }
 .listen-btn:hover { background: #00d2ff; color: white; }
+
+/* Hide Streamlit Elements */
 #MainMenu, footer { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 # ======================================================
-# 4. ROBUST API LOGIC
+# 4. ROBUST API LOGIC (Vision-Proof)
 # ======================================================
 if "playlist" not in st.session_state: st.session_state.playlist = None
 if "current_mood" not in st.session_state: st.session_state.current_mood = "Neutral"
@@ -118,20 +126,17 @@ def get_valid_model(key):
             # 1. First choice: Gemini 1.5 Flash (Fast, Free, Text)
             for m in models:
                 name = m.get('name')
-                if 'flash' in name and 'vision' not in name:
-                    return name
+                if 'flash' in name and 'vision' not in name: return name
             
             # 2. Second choice: Gemini Pro (Standard Text)
             for m in models:
                 name = m.get('name')
-                if 'pro' in name and 'vision' not in name:
-                    return name
+                if 'pro' in name and 'vision' not in name: return name
                     
             # 3. Last Resort: Any Gemini that is NOT vision
             for m in models:
                 name = m.get('name')
-                if 'gemini' in name and 'vision' not in name:
-                    return name
+                if 'gemini' in name and 'vision' not in name: return name
 
         return "models/gemini-pro"
     except:
@@ -141,7 +146,7 @@ def get_vibe_playlist(mood_text):
     if not api_key: return "⚠️ API Key Missing."
     
     model_name = get_valid_model(api_key)
-    # Ensure we didn't accidentally grab a vision model
+    # Double check: Ensure we didn't accidentally grab a vision model
     if 'vision' in model_name:
         model_name = "models/gemini-pro"
 
@@ -193,13 +198,29 @@ def get_vibe_playlist(mood_text):
         return f"Connection Error: {str(e)}"
 
 # ======================================================
-# 5. UI LAYOUT
+# 5. SIDEBAR (RESTORED INFO)
 # ======================================================
 with st.sidebar:
     st.title("🎧 Control Center")
-    st.markdown("VibeChecker uses AI to curate your perfect playlist.")
+    
+    st.markdown("""
+    **VibeChecker** detects your mood and curates the perfect playlist using AI.
+    """)
+    
+    st.write("---")
+
+    # Expander for cleaner UI
+    with st.expander("ℹ️ How it works"):
+        st.write("""
+        1. **Mood Input:** Type how you feel or pick a preset.
+        2. **AI Processing:** We analyze emotional context.
+        3. **Curation:** You get 5 perfect songs with direct links.
+        """)
+    
+    st.write("---")
+    
     if st.button("🎲 Surprise Me"):
-        vibe = random.choice(["Energetic", "Chill", "Dreamy", "Focus"])
+        vibe = random.choice(["Energetic", "Chill", "Dreamy", "Focus", "Melancholy"])
         st.session_state.current_mood = vibe
         st.session_state.show_quiz = False
         with st.spinner(f"Curating {vibe}..."):
@@ -207,12 +228,17 @@ with st.sidebar:
             if isinstance(res, list): st.session_state.playlist = res
             else: st.session_state.error = res
         st.rerun()
-    if st.button("🔄 Reset"):
+        
+    if st.button("🔄 Reset App"):
         st.session_state.playlist = None
         st.session_state.error = None
         st.session_state.show_quiz = False
+        st.session_state.current_mood = "Neutral"
         st.rerun()
 
+# ======================================================
+# 6. MAIN UI
+# ======================================================
 st.markdown('<div class="big-title">VibeChecker</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI-Powered Mood Curation</div>', unsafe_allow_html=True)
 
@@ -259,7 +285,7 @@ if st.button("🤔 Not sure? Help me decide"):
     st.session_state.show_quiz = not st.session_state.show_quiz
     st.session_state.playlist = None 
 
-# INPUTS
+# INPUTS (Quiz vs Text)
 final_query = None
 if st.session_state.show_quiz:
     st.markdown("### 📝 Answer these 3 questions:")
