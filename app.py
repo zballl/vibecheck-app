@@ -103,12 +103,14 @@ if 'q1' not in st.session_state: st.session_state.q1 = "Neutral"
 if 'q2' not in st.session_state: st.session_state.q2 = "Relaxed"
 if 'q3' not in st.session_state: st.session_state.q3 = "Calm"
 
-# --- 6. THE BRAIN (FIXED ENDPOINT & MODEL) ---
+# --- 6. THE BRAIN (MULTI-MODEL FAILSAFE) ---
 def get_vibe_check(mood):
-    # We switch to 'gemini-1.5-flash' but use the cleaner 'v1beta' URL format 
-    # ensuring we don't hit the 404 on the model name.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
+    # LIST OF MODELS TO TRY (In order of preference)
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
     
     prompt = (
         f"Analyze mood: '{mood}'.\n"
@@ -119,24 +121,36 @@ def get_vibe_check(mood):
     )
     
     data = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {'Content-Type': 'application/json'}
     
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code != 200:
-            return f"Error {response.status_code}: {response.text}"
-            
+    last_error = ""
+
+    # Try each model until one works
+    for model_name in models_to_try:
         try:
-            text = response.json()['candidates'][0]['content']['parts'][0]['text']
-            match = re.search(r"\[.*\]", text, re.DOTALL)
-            if match:
-                clean_json = match.group(0)
-                return json.loads(clean_json)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            response = requests.post(url, headers=headers, json=data)
+            
+            # If successful, process and break the loop
+            if response.status_code == 200:
+                try:
+                    text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                    match = re.search(r"\[.*\]", text, re.DOTALL)
+                    if match:
+                        clean_json = match.group(0)
+                        return json.loads(clean_json) # SUCCESS!
+                except:
+                    continue # Parse failed, try next model
+            
             else:
-                return "Error: Could not find JSON data in response."
-        except Exception as e:
-            return f"Parsing Error: {str(e)}"
-    except Exception as e:
-        return f"Connection Error: {str(e)}"
+                last_error = f"Model {model_name} failed ({response.status_code})."
+                continue # HTTP failed, try next model
+
+        except:
+            continue
+
+    # If we get here, ALL models failed
+    return f"All AI models failed. Last error: {last_error}"
 
 # --- 7. SIDEBAR ---
 with st.sidebar:
@@ -167,7 +181,7 @@ with st.sidebar:
 # --- 8. MAIN UI ---
 st.markdown('<p class="title-text">🎵 VibeChecker</p>', unsafe_allow_html=True)
 
-# Mood Buttons
+# Buttons
 c1, c2, c3, c4 = st.columns(4)
 b1 = c1.button("⚡ Energetic")
 b2 = c2.button("☂️ Melancholy")
@@ -175,7 +189,7 @@ b3 = c3.button("🧘 Chill")
 b4 = c4.button("💔 Heartbroken")
 not_sure_button = st.button("🤔 Not Sure How I Feel")
 
-# Button Logic
+# Logic
 target_mood = None
 if b1: target_mood = "Energetic"
 if b2: target_mood = "Melancholy"
@@ -191,7 +205,7 @@ if target_mood:
         else:
             st.session_state.error_debug = result
 
-# "Not Sure" Logic
+# Questions Logic
 if not_sure_button and not st.session_state.questions_asked:
     st.session_state.questions_asked = True
 
