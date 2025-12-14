@@ -97,7 +97,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ======================================================
-# 4. ROBUST API LOGIC (Vision-Proof)
+# 4. ROBUST API LOGIC (Vision-Proof + Gibberish Check)
 # ======================================================
 if "playlist" not in st.session_state: st.session_state.playlist = None
 if "current_mood" not in st.session_state: st.session_state.current_mood = "Neutral"
@@ -114,7 +114,7 @@ else:
 
 def get_valid_model(key):
     """
-    Finds a TEXT model. Explicitly avoids VISION models to prevent 400 Errors.
+    Finds a TEXT model. Explicitly avoids VISION models.
     """
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
     try:
@@ -123,20 +123,13 @@ def get_valid_model(key):
             data = response.json()
             models = data.get('models', [])
             
-            # 1. First choice: Gemini 1.5 Flash (Fast, Free, Text)
+            # Priority: Flash -> Pro -> Any Text Model
             for m in models:
-                name = m.get('name')
-                if 'flash' in name and 'vision' not in name: return name
-            
-            # 2. Second choice: Gemini Pro (Standard Text)
+                if 'flash' in m.get('name') and 'vision' not in m.get('name'): return m.get('name')
             for m in models:
-                name = m.get('name')
-                if 'pro' in name and 'vision' not in name: return name
-                    
-            # 3. Last Resort: Any Gemini that is NOT vision
+                if 'pro' in m.get('name') and 'vision' not in m.get('name'): return m.get('name')
             for m in models:
-                name = m.get('name')
-                if 'gemini' in name and 'vision' not in name: return name
+                if 'gemini' in m.get('name') and 'vision' not in m.get('name'): return m.get('name')
 
         return "models/gemini-pro"
     except:
@@ -146,15 +139,15 @@ def get_vibe_playlist(mood_text):
     if not api_key: return "⚠️ API Key Missing."
     
     model_name = get_valid_model(api_key)
-    # Double check: Ensure we didn't accidentally grab a vision model
-    if 'vision' in model_name:
-        model_name = "models/gemini-pro"
+    if 'vision' in model_name: model_name = "models/gemini-pro"
 
     url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
     
-    # Use DOUBLE QUOTES in the example to prevent JSON errors
+    # --- UPDATED PROMPT WITH GIBBERISH RULE ---
     prompt = (
-        f"Recommend 5 songs for mood: '{mood_text}'. "
+        f"Analyze the input: '{mood_text}'. "
+        "RULE 1: If the input is gibberish, random letters (e.g. 'asdf', 'kljlk'), or nonsense, return EXACTLY: [{\"title\": \"ERROR_GIBBERISH\"}]. "
+        "RULE 2: If valid, recommend 5 songs. "
         "Return ONLY a JSON array. "
         "Format: [{\"title\": \"Song Name\", \"artist\": \"Artist Name\", \"desc\": \"Short reason\"}]. "
         "NO markdown."
@@ -171,7 +164,7 @@ def get_vibe_playlist(mood_text):
             match = re.search(r"\[.*\]", clean_text, re.DOTALL)
             if match: clean_text = match.group(0)
             
-            # Robust Parsing (JSON -> AST Backup)
+            # Robust Parsing
             try:
                 data = json.loads(clean_text)
             except:
@@ -181,6 +174,11 @@ def get_vibe_playlist(mood_text):
                     return "AI Error: Could not read data."
 
             if isinstance(data, list):
+                # --- CHECK FOR GIBBERISH FLAG ---
+                if len(data) > 0 and data[0].get('title') == "ERROR_GIBBERISH":
+                    return "🚫 That doesn't look like a real mood! Try typing an emotion like 'Happy', 'Chill', or 'Studying'."
+                
+                # Process valid songs
                 for song in data:
                     q = urllib.parse.quote_plus(f"{song.get('title')} {song.get('artist')}")
                     song['link'] = f"https://www.youtube.com/results?search_query={q}"
@@ -198,25 +196,20 @@ def get_vibe_playlist(mood_text):
         return f"Connection Error: {str(e)}"
 
 # ======================================================
-# 5. SIDEBAR (RESTORED INFO)
+# 5. SIDEBAR
 # ======================================================
 with st.sidebar:
     st.title("🎧 Control Center")
-    
-    st.markdown("""
-    **VibeChecker** detects your mood and curates the perfect playlist using AI.
-    """)
-    
+    st.markdown("**VibeChecker** detects your mood and curates the perfect playlist.")
     st.write("---")
-
-    # Expander for cleaner UI
+    
     with st.expander("ℹ️ How it works"):
         st.write("""
         1. **Mood Input:** Type how you feel or pick a preset.
-        2. **AI Processing:** We analyze emotional context.
+        2. **AI Analysis:** We analyze emotional context.
         3. **Curation:** You get 5 perfect songs with direct links.
         """)
-    
+        
     st.write("---")
     
     if st.button("🎲 Surprise Me"):
@@ -285,7 +278,7 @@ if st.button("🤔 Not sure? Help me decide"):
     st.session_state.show_quiz = not st.session_state.show_quiz
     st.session_state.playlist = None 
 
-# INPUTS (Quiz vs Text)
+# INPUTS
 final_query = None
 if st.session_state.show_quiz:
     st.markdown("### 📝 Answer these 3 questions:")
